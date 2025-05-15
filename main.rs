@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::path::{Path};
+use std::fs::{File};
+use std::{io};
+use std::io::{Read, Write};
+use std::fmt::Debug;
+
 
 // File handling functions
 
@@ -26,6 +32,7 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
 // AST is a Vec<Vec<String>, Which contains a Vec of lines, with a sub Vec of the parts of the line
 // Each line will be split into a verb and nouns
 
+#[derive(Debug)]
 enum Verb {
     Set,     // x = 0;
     Return,  // x
@@ -33,11 +40,13 @@ enum Verb {
     Do,
 }
 
+#[derive(Debug)]
 struct ASTLine {
     pub verb: Verb,
     pub nouns: Vec<String>,
 }
 
+#[derive(Debug)]
 struct AST {
     pub lines: Vec<ASTLine>,
     pub params: HashMap<String, String>,
@@ -45,7 +54,7 @@ struct AST {
 
 // Value enum will hold all the referencable types
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum Value {
     Int(i32),
     Float(f64),
@@ -61,7 +70,7 @@ enum Value {
 // For converting raw string nouns to actual values
 
 trait ToValue {
-    fn to_value(&self) -> Value;
+    fn to_value(Value) -> Value;
 }
 
 impl Value {
@@ -105,12 +114,15 @@ impl Value {
         }
     }
 
-    pub fn parse(input: &str, type_of: &str) {
+    pub fn parse(input: &str, type_of: &str) -> Value {
         match type_of {
             "int" => Self::parse_int(input),
             "str" => Self::parse_str(input),
             "float" => Self::parse_float(input),
             "bool" => Self::parse_bool(input),
+            _ => {
+                panic!("Unknown type {}", type_of)
+            }
         };
     }
 }
@@ -134,31 +146,32 @@ impl Environment {
         }
     }
 
-    fn search_for_var(&self, name) -> Value {
-        // Search through the parents stack starting at the local environment until either no further parent is found or the value is found
-        let mut parent = self;
-        while let Some(next_parent) = parent {
-            if let Some(val) = next_parent.vars.get(name) {
-                val
-            }
-
-            parent = next_parent.parent;
+    fn search_for_var(&self, name: String) -> Value {
+        // First check if the value exists in the current environment
+        if let Some(val) = self.vars.get(&name) {
+            return *val.clone();  // Return a clone of the value
         }
-
+        
+        // If not found, check parent environments
+        if let Some(parent_env) = &self.parent {
+            return parent_env.search_for_var(name);
+        }
+        
+        // If no value is found in any environment, return Null
         Value::Null
     }
 }
 
 struct ASTGenerator {
     file_contents: String,
-    environment: environment,
+    environment: Environment,
 }
 
 impl ASTGenerator {
-    fn new(path: &str, environment: environment) -> Self {
+    fn new(path: &str, environment: Environment) -> Self {
         let file_contents = match read_file(path) {
             Ok(val) => val,
-            None => panic!("File not found")
+            Err(_) => panic!("File not found"),
         };
 
         ASTGenerator {
@@ -167,16 +180,16 @@ impl ASTGenerator {
         }
     }
 
-    
-    fn fn_to_AST(&self, function: String, type_of: String, params: HashMap<String, String>, function_name: String) -> () {
-        let lines = function.split("\n");
+    // Self must be mutable as we mutate the enviorenment attribute
+    fn fn_to_AST(&mut self, function: String, type_of: String, params: HashMap<String, String>, function_name: String) -> () {
+        let mut lines = function.split("\n");
 
         let mut next_line = lines.next();
 
-        let ast = AST { lines: Vec::new(), params }
+        let mut ast = AST { lines: Vec::new(), params };
 
         while let Some(line) = next_line {
-            simplified_line = &line[0..line.len() - 1]; // Remove suffix
+            let simplified_line = &line[0..line.len() - 1]; // Remove suffix
 
             let suffix = match line.chars().last() {
                 Some(val) => val,
@@ -185,21 +198,21 @@ impl ASTGenerator {
             
             match suffix {
                 '?' => {    // Do statement (syntax: marker_name conditional?)
-                    split_line = simplified_line.splitn(1, " ")
+                    let mut split_line = simplified_line.splitn(1, " ");
 
                     ast.lines.push(ASTLine {
                         verb: Verb::Do,
                         nouns: vec![match split_line.next() {
-                            Some(val) => val,
+                            Some(val) => val.to_string(),
                             None => panic!("Failed to load marker name of do statement")
                         }, match split_line.next() {
-                            Some(val) => val,
+                            Some(val) => val.to_string(),
                             None => panic!("Failed to load conditional statement of do statement")
                         }],
                     })
                 },
                 ';' => {    // Set statement (syntax: var: type = val;)
-                     let parts = line.split("=")
+                     let mut parts = line.split("=");
 
                     let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -213,9 +226,9 @@ impl ASTGenerator {
                         None => {
                             panic!("Failed to load variable value")
                         }
-                    }.trim()
+                    }.trim();
 
-                    let declaration_parts = var_declaration.split(":")
+                    let mut declaration_parts = var_declaration.split(":");
 
                                         let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -236,7 +249,7 @@ impl ASTGenerator {
                         None => {
                             panic!("Failed to load variable value")
                         }
-                    }.trim()
+                    }.trim();
 
                     ast.lines.push(ASTLine {
                         verb: Verb::Set,
@@ -246,25 +259,25 @@ impl ASTGenerator {
                 '!' => {    // Mark statement (marker_name!)
                     ast.lines.push(ASTLine {
                         verb: Verb::Mark,
-                        nouns: vec![simplified_line.trim()],
+                        nouns: vec![simplified_line.trim().to_string()],
                     })
                 }
                 _ => {      // Return statement (var_name)
                     ast.lines.push(ASTLine {
                         verb: Verb::Return,
-                        nouns: vec![simplified_line.trim(), type_of],
+                        nouns: vec![simplified_line.trim().to_string(), (*type_of).to_string()],
                     })
                 }
             }
         }
 
-        self.environment.vars.insert(function_name, ast)
+        self.environment.vars.insert(function_name, Value::ASTRef(ast));
     }
 
     // Handle imports, load functions to AST, and handle loading constants to environment
     //**NOTE:** The AST must also break down if else statements and stuff into raw do blocks */
-    fn load_function_AST(&self, env: Environment) -> () {
-        let lines = file_contents.split("\n"); // iterator
+    fn load_function_AST(&mut self) -> () { // Self must be mutable because we mutate the enviorenment attribute
+        let mut lines = self.file_contents.split("\n"); // iterator
         
         let mut next_line = lines.next();
 
@@ -274,13 +287,13 @@ impl ASTGenerator {
             }
 
             let suffix = match line.chars().last() {
-                Ok(val) => val,
+                Some(val) => val,
                 None => panic!("Failed to read suffix")
             };
 
             match suffix {
                 ';' => {    // Declarative line (x = 0)
-                    let parts = line.split("=")
+                    let mut parts = line.split("=");
 
                     let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -294,9 +307,9 @@ impl ASTGenerator {
                         None => {
                             panic!("Failed to load variable value")
                         }
-                    }.trim()
+                    }.trim();
 
-                    let declaration_parts = var_declaration.split(":")
+                    let mut declaration_parts = var_declaration.split(":");
 
                                         let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -317,26 +330,26 @@ impl ASTGenerator {
                         None => {
                             panic!("Failed to load variable value")
                         }
-                    }.trim()
+                    }.trim();
 
-                    self.environment.vars.insert(var_name, Value::parse(val, var_type));
+                    self.environment.vars.insert(var_name.to_string(), Value::parse(val, var_type));
                 },
                 '{' => {    // Constructive line (if, function, etc.)
                     // Extract return type of function & parameters (syntax: function_name: return_type (param1: type, param2: type))
-                    let parts = next_line.split("(");
+                    let mut parts = line.split("(");
                     let traits = match parts.next() {
                         Some(val) => val,
                         None => panic!("Failed to load function traits")
-                    }
+                    };
                     let params_string = match parts.next() {
                         Some(val) => val,
                         None => panic!("Failed to load function params")
-                    }
+                    }.replace(")", "");
 
-                    let split_params = parts.split(",");
-                    let params = HashMap<String, String>::new()
-                    while let some(param) = split_params.next() {
-                        let split_param = param.split(",");
+                    let mut split_params = params_string.split(",");
+                    let mut params: HashMap<String, String> = HashMap::new();
+                    while let Some(param) = split_params.next() {
+                        let mut split_param = param.split(",");
                         let param_name = match split_param.next() {
                             Some(val) => val,
                             None => {
@@ -349,24 +362,24 @@ impl ASTGenerator {
                                 panic!("Failed to load param name");
                             }
                         };
-                        params.insert(param_name, param_type);
+                        params.insert(param_name.to_string(), param_type.to_string());
                     }
 
-                    let trait_parts = traits.split(":");
+                    let mut trait_parts = traits.split(":");
                     let function_name = match trait_parts.next() {
                         Some(val) => val,
                         None => {
                             panic!("Failed to load function name")
                         }
                     };
-                    let return_type = match trait.parts.next() {
+                    let return_type = match trait_parts.next() {
                         Some(val) => val,
                         None => {
                             panic!("Failed to load function return type");
                         }
                     };
 
-                    let function_contents = String::new();
+                    let mut function_contents = String::new();
 
                     // Load all lines until closing } to function_contents (**NOTE:** There is no need to worry about sub if, else, switch, statements, as they will use Do marker blocks)
                     while let Some(next_line) = lines.next() {
@@ -377,7 +390,7 @@ impl ASTGenerator {
                         function_contents += next_line.trim();
                     }
 
-                    self.fn_to_AST(function_contents, return_type, params, function_name);
+                    self.fn_to_AST(function_contents, return_type.to_string(), params, function_name.to_string());
                 },
                 '!' => {    // Import
 
@@ -395,5 +408,5 @@ impl ASTGenerator {
 fn main() {
     let env = Environment::new();   // Generate global environment
     let generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
-    generator.load_function_AST(env);   // Load AST to previosly defined env
+    generator.load_function_AST();   // Load AST using the environment stored in the generator
 }
