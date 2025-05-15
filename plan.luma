@@ -1,10 +1,11 @@
-main: int {   // The interpreter reads the { at the end of the function declaration, implying that it is a function
+main: int (y: int) {   // The interpreter reads the { at the end of the function declaration, implying that it is a function
                        // When the interpreter reaches a function, it opens up a var to store the lines
 
     x: int = 0;        // Semicolons for setting a value, interpreter reads the 'int' type, and can from there derive that it needs to call parse int on the noun
 
     x                 // No semicolons for returning, types are stored when a variable is defined, so when generating the AST the interpreter knows which type to insert
-
+    my_marker x < 120?  // Jump to my_marker if x < 120
+    my_marker!          // Declare my_marker
 }                      // When the interpreter reaches a line with a suffix of } it generates an AST off the var and cleans the var
 
 // AST Representation of main

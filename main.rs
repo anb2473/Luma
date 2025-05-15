@@ -54,7 +54,7 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
 // AST is a Vec<Vec<String>, Which contains a Vec of lines, with a sub Vec of the parts of the line
 // Each line will be split into a verb and nouns
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Verb {
     Set,     // x = 0;
     Return,  // x
@@ -62,13 +62,13 @@ enum Verb {
     Do,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ASTLine {
     pub verb: Verb,
     pub nouns: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct AST {
     pub lines: Vec<ASTLine>,
     pub params: HashMap<String, String>,
@@ -213,6 +213,10 @@ impl ASTGenerator {
         let mut ast = AST { lines: Vec::new(), params };
 
         while let Some(line) = next_line {
+            if line == "" {
+                next_line = lines.next();
+                continue;
+            }
             let simplified_line = &line[0..line.len() - 1]; // Remove suffix
 
             let suffix = match line.chars().last() {
@@ -222,7 +226,7 @@ impl ASTGenerator {
             
             match suffix {
                 '?' => {    // Do statement (syntax: marker_name conditional?)
-                    let mut split_line = simplified_line.splitn(1, " ");
+                    let mut split_line = simplified_line.splitn(2, " ");
 
                     ast.lines.push(ASTLine {
                         verb: Verb::Do,
@@ -236,7 +240,7 @@ impl ASTGenerator {
                     })
                 },
                 ';' => {    // Set statement (syntax: var: type = val;)
-                     let mut parts = line.split("=");
+                    let mut parts = simplified_line.split("=");
 
                     let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -254,19 +258,12 @@ impl ASTGenerator {
 
                     let mut declaration_parts = var_declaration.split(":");
 
-                                        let var_declaration = match parts.next() {
-                        Some(val) => val,
+                    let var_name = match declaration_parts.next() {
+                        Some(val) => val.trim(),
                         None => {
                             panic!("Failed to load first half of declaration")
                         }
                     };
-
-                    let var_name = match declaration_parts.next() {
-                        Some(val) => val,
-                        None => {
-                            panic!("Failed to load first half of declaration")
-                        }
-                    }.trim();
 
                     let var_type = match declaration_parts.next() {
                         Some(val) => val,
@@ -289,11 +286,15 @@ impl ASTGenerator {
                 _ => {      // Return statement (var_name)
                     ast.lines.push(ASTLine {
                         verb: Verb::Return,
-                        nouns: vec![simplified_line.trim().to_string(), (*type_of).to_string()],
+                        nouns: vec![line.trim().to_string(), (*type_of).to_string()],
                     })
                 }
             }
+
+            next_line = lines.next();
         }
+
+        println!("{:?}", ast);
 
         (function_name, Value::ASTRef(ast))
     }
@@ -307,8 +308,14 @@ impl ASTGenerator {
 
         let mut vars = std::mem::take(&mut self.environment.vars); // Take control of vars so it doesnt conflict with call to self.fn_to_AST and borrow self
 
-        while let Some(line) = next_line {  // Using while loop instead of traditional for_loop to add flexibility for looking ahead in the iterator
+        while let Some(mut line) = next_line {  // Using while loop instead of traditional for_loop to add flexibility for looking ahead in the iterator           
+            line = match line.split("//").next() {
+                Some(val) => val,
+                None => panic!("Failed to filter out comments"),
+            }.trim();
+
             if line == "" {
+                next_line = lines.next();
                 continue;
             }
 
@@ -316,6 +323,8 @@ impl ASTGenerator {
                 Some(val) => val,
                 None => panic!("Failed to read suffix")
             };
+
+           let line = &line[..line.len()-1];
 
             match suffix {
                 ';' => {    // Declarative line (x = 0)
@@ -367,15 +376,17 @@ impl ASTGenerator {
                         Some(val) => val,
                         None => panic!("Failed to load function traits")
                     };
-                    let params_string = match parts.next() {
+                    let mut params_string = match parts.next() {
                         Some(val) => val,
                         None => panic!("Failed to load function params")
-                    }.replace(")", "");
+                    }.to_string();
+                    params_string = params_string.replace(")", "");
+                    params_string = params_string.trim().to_string();
 
                     let mut split_params = params_string.split(",");
                     let mut params: HashMap<String, String> = HashMap::new();
                     while let Some(param) = split_params.next() {
-                        let mut split_param = param.split(",");
+                        let mut split_param = param.split(":");
                         let param_name = match split_param.next() {
                             Some(val) => val,
                             None => {
@@ -385,7 +396,7 @@ impl ASTGenerator {
                         let param_type = match split_param.next() {
                             Some(val) => val,
                             None => {
-                                panic!("Failed to load param name");
+                                panic!("Failed to load param type");
                             }
                         };
                         params.insert(param_name.to_string(), param_type.to_string());
@@ -408,15 +419,20 @@ impl ASTGenerator {
                     let mut function_contents = String::new();
 
                     // Load all lines until closing } to function_contents (**NOTE:** There is no need to worry about sub if, else, switch, statements, as they will use Do marker blocks)
-                    while let Some(next_line) = lines.next() {
+                    while let Some(mut next_line) = lines.next() {
+                        next_line = match next_line.split("//").next() {
+                            Some(val) => val.trim(),
+                            None => panic!("Failed to filter out comments"),
+                        };
+
                         if next_line == "}" {
                             break;
                         }
 
-                        function_contents += next_line.trim();
+                        function_contents += format!("{}\n", next_line.trim()).as_str();
                     }
 
-                    let (function_name, AST_ref) = Self::fn_to_AST(function_contents, return_type.to_string(), params, function_name.to_string());
+                    let (function_name, AST_ref) = Self::fn_to_AST(function_contents, return_type.trim().to_string(), params, function_name.to_string());
 
                     vars.insert(function_name, AST_ref);
                 },
@@ -424,7 +440,7 @@ impl ASTGenerator {
 
                 },
                 _ => {
-                    panic!("Unknown suffix")
+                    panic!("Unknown suffix \"{:?}\", line \"{:?}\"", suffix, line)
                 }
             };
 
