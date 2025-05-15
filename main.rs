@@ -6,6 +6,28 @@ use std::{io};
 use std::io::{Read, Write};
 use std::fmt::Debug;
 
+// We need to integratea  custom implementation of Clone for the fn (Vec) for the Value to work properly
+// Trait that is both Fn and Clone
+pub trait CloneFn: Fn(Vec<Value>) -> Value + 'static {
+    fn clone_box(&self) -> Box<dyn CloneFn>;
+}
+
+// Blanket implementation for all matching types
+impl<T> CloneFn for T
+where
+    T: Fn(Vec<Value>) -> Value + Clone + 'static,
+{
+    fn clone_box(&self) -> Box<dyn CloneFn> {
+        Box::new(self.clone())
+    }
+}
+
+// Implement Clone manually for Box<dyn CloneFn>
+impl Clone for Box<dyn CloneFn> {
+    fn clone(&self) -> Box<dyn CloneFn> {
+        self.clone_box()
+    }
+}
 
 // File handling functions
 
@@ -32,7 +54,7 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
 // AST is a Vec<Vec<String>, Which contains a Vec of lines, with a sub Vec of the parts of the line
 // Each line will be split into a verb and nouns
 
-#[derive(Debug)]
+#[derive(Clone)]
 enum Verb {
     Set,     // x = 0;
     Return,  // x
@@ -40,13 +62,13 @@ enum Verb {
     Do,
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 struct ASTLine {
     pub verb: Verb,
     pub nouns: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 struct AST {
     pub lines: Vec<ASTLine>,
     pub params: HashMap<String, String>,
@@ -54,14 +76,14 @@ struct AST {
 
 // Value enum will hold all the referencable types
 
-#[derive(Debug)]
+#[derive(Clone)]
 enum Value {
     Int(i32),
     Float(f64),
     Str(String),
     Bool(bool),
     List(Vec<Value>),
-    FunctionRef(Box<dyn Fn(Vec<Value>) -> Value>),   // Holds a function reference (This will allow for you to call Rust functions)
+    FunctionRef(Box<dyn CloneFn>),   // Holds a function reference (This will allow for you to call Rust functions) **NOTE:** Function takes in vec
     ASTRef(AST), // Holds a function reference (This will allow for you to call Luma functions)
     Environment(Rc<Environment>),   // Holds a smart pointer to an environment (for classes)
     Null,
@@ -121,9 +143,11 @@ impl Value {
             "float" => Self::parse_float(input),
             "bool" => Self::parse_bool(input),
             _ => {
-                panic!("Unknown type {}", type_of)
+                panic!("Unknown type {}", type_of);
             }
         };
+
+        Value::Null
     }
 }
 
@@ -131,7 +155,7 @@ impl Value {
 // **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
 // Before following the pointers to each parent environment and searching for the value there
 
-#[derive(Clone, Debug)] // Derive Clone if you want to clone instances of Environment
+#[derive(Clone)] // Derive Clone if you want to clone instances of Environment
 struct Environment {
     vars: HashMap<String, Value>,    // Var name to Value (from enum) to allow fast look up times
     parent: Option<Rc<Environment>>, // Smart pointer back to parent environment to allow nested environments
@@ -149,7 +173,7 @@ impl Environment {
     fn search_for_var(&self, name: String) -> Value {
         // First check if the value exists in the current environment
         if let Some(val) = self.vars.get(&name) {
-            return *val.clone();  // Return a clone of the value
+            return val.clone();  // Return a clone of the value
         }
         
         // If not found, check parent environments
@@ -181,7 +205,7 @@ impl ASTGenerator {
     }
 
     // Self must be mutable as we mutate the enviorenment attribute
-    fn fn_to_AST(&mut self, function: String, type_of: String, params: HashMap<String, String>, function_name: String) -> () {
+    fn fn_to_AST(function: String, type_of: String, params: HashMap<String, String>, function_name: String) -> (String, Value) {
         let mut lines = function.split("\n");
 
         let mut next_line = lines.next();
@@ -271,15 +295,17 @@ impl ASTGenerator {
             }
         }
 
-        self.environment.vars.insert(function_name, Value::ASTRef(ast));
+        (function_name, Value::ASTRef(ast))
     }
 
     // Handle imports, load functions to AST, and handle loading constants to environment
     //**NOTE:** The AST must also break down if else statements and stuff into raw do blocks */
     fn load_function_AST(&mut self) -> () { // Self must be mutable because we mutate the enviorenment attribute
-        let mut lines = self.file_contents.split("\n"); // iterator
+        let mut lines = (*self.file_contents).split("\n"); // iterator
         
         let mut next_line = lines.next();
+
+        let mut vars = std::mem::take(&mut self.environment.vars); // Take control of vars so it doesnt conflict with call to self.fn_to_AST and borrow self
 
         while let Some(line) = next_line {  // Using while loop instead of traditional for_loop to add flexibility for looking ahead in the iterator
             if line == "" {
@@ -332,7 +358,7 @@ impl ASTGenerator {
                         }
                     }.trim();
 
-                    self.environment.vars.insert(var_name.to_string(), Value::parse(val, var_type));
+                    vars.insert(var_name.to_string(), Value::parse(val, var_type));         
                 },
                 '{' => {    // Constructive line (if, function, etc.)
                     // Extract return type of function & parameters (syntax: function_name: return_type (param1: type, param2: type))
@@ -390,7 +416,9 @@ impl ASTGenerator {
                         function_contents += next_line.trim();
                     }
 
-                    self.fn_to_AST(function_contents, return_type.to_string(), params, function_name.to_string());
+                    let (function_name, AST_ref) = Self::fn_to_AST(function_contents, return_type.to_string(), params, function_name.to_string());
+
+                    vars.insert(function_name, AST_ref);
                 },
                 '!' => {    // Import
 
@@ -402,11 +430,13 @@ impl ASTGenerator {
 
             next_line = lines.next();   
         }
+
+        self.environment.vars = vars; // Put vars back into self
     }
 }
 
 fn main() {
     let env = Environment::new();   // Generate global environment
-    let generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
+    let mut generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
     generator.load_function_AST();   // Load AST using the environment stored in the generator
 }
