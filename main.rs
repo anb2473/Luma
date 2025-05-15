@@ -47,7 +47,7 @@ struct AST {
 
 #[derive(Debug, Clone)]
 enum Value {
-    Int(i64),
+    Int(i32),
     Float(f64),
     Str(String),
     Bool(bool),
@@ -61,7 +61,7 @@ enum Value {
 // For converting raw string nouns to actual values
 
 trait ToValue {
-    fn to_value(&self, val: String) -> Value;
+    fn to_value(&self) -> Value;
 }
 
 impl Value {
@@ -74,15 +74,6 @@ impl Value {
     // Functions to generate a value from a str representation
 
     // Orginization function
-
-    pub fn parse(input: &str, type_of: &str) {
-        match type_of {
-            "int" => parse_int(input),
-            "str" => parse_str(input),
-            "float" => parse_float(input),
-            "bool" => parse_bool(input),
-        }
-    }
 
     // Parse a string into a Value::Int (i32)
     pub fn parse_int(input: &str) -> Option<Value> {
@@ -112,6 +103,15 @@ impl Value {
             "false" => Some(Value::Bool(false)),
             _ => None,
         }
+    }
+
+    pub fn parse(input: &str, type_of: &str) {
+        match type_of {
+            "int" => Self::parse_int(input),
+            "str" => Self::parse_str(input),
+            "float" => Self::parse_float(input),
+            "bool" => Self::parse_bool(input),
+        };
     }
 }
 
