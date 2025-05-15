@@ -27,8 +27,10 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
 // Each line will be split into a verb and nouns
 
 enum Verb {
-    SET,
-    RETURN,
+    Set,     // x = 0;
+    Return,  // x
+    Mark,  // my_import!
+    Do,
 }
 
 struct ASTLine {
@@ -37,7 +39,8 @@ struct ASTLine {
 }
 
 struct AST {
-    pub lines: ASTLine,
+    pub lines: Vec<ASTLine>,
+    pub params: HashMap<String, String>,
 }
 
 // Value enum will hold all the referencable types
@@ -51,7 +54,7 @@ enum Value {
     List(Vec<Value>),
     FunctionRef(Box<dyn Fn(Vec<Value>) -> Value>),   // Holds a function reference (This will allow for you to call Rust functions)
     ASTRef(AST), // Holds a function reference (This will allow for you to call Luma functions)
-    Environment(Rc<Environment>),   // Holds a smart pointer to an enviorenment (for classes)
+    Environment(Rc<Environment>),   // Holds a smart pointer to an environment (for classes)
     Null,
 }
 
@@ -113,8 +116,8 @@ impl Value {
 }
 
 
-// **NOTE:** When a request for a value in the enviorenment is made the system will start by searching through the raw enviorenment,
-// Before following the pointers to each parent enviorenment and searching for the value there
+// **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
+// Before following the pointers to each parent environment and searching for the value there
 
 #[derive(Clone, Debug)] // Derive Clone if you want to clone instances of Environment
 struct Environment {
@@ -132,7 +135,7 @@ impl Environment {
     }
 
     fn search_for_var(&self, name) -> Value {
-        // Search through the parents stack starting at the local enviorenment until either no further parent is found or the value is found
+        // Search through the parents stack starting at the local environment until either no further parent is found or the value is found
         let mut parent = self;
         while let Some(next_parent) = parent {
             if let Some(val) = next_parent.vars.get(name) {
@@ -148,10 +151,11 @@ impl Environment {
 
 struct ASTGenerator {
     file_contents: String,
+    environment: environment,
 }
 
 impl ASTGenerator {
-    fn new(path: &str) -> Self {
+    fn new(path: &str, environment: environment) -> Self {
         let file_contents = match read_file(path) {
             Ok(val) => val,
             None => panic!("File not found")
@@ -159,20 +163,110 @@ impl ASTGenerator {
 
         ASTGenerator {
             file_contents: file_contents,
+            environment: environment,
         }
     }
 
     
-    fn fn_to_AST(&self, function: String) -> () {
-        
+    fn fn_to_AST(&self, function: String, type_of: String, params: HashMap<String, String>, function_name: String) -> () {
+        let lines = function.split("\n");
+
+        let mut next_line = lines.next();
+
+        let ast = AST { lines: Vec::new(), params }
+
+        while let Some(line) = next_line {
+            simplified_line = &line[0..line.len() - 1]; // Remove suffix
+
+            let suffix = match line.chars().last() {
+                Some(val) => val,
+                None => panic!("Failed to read suffix")
+            };
+            
+            match suffix {
+                '?' => {    // Do statement (syntax: marker_name conditional?)
+                    split_line = simplified_line.splitn(1, " ")
+
+                    ast.lines.push(ASTLine {
+                        verb: Verb::Do,
+                        nouns: vec![match split_line.next() {
+                            Some(val) => val,
+                            None => panic!("Failed to load marker name of do statement")
+                        }, match split_line.next() {
+                            Some(val) => val,
+                            None => panic!("Failed to load conditional statement of do statement")
+                        }],
+                    })
+                },
+                ';' => {    // Set statement (syntax: var: type = val;)
+                     let parts = line.split("=")
+
+                    let var_declaration = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    };
+
+                    let val = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load variable value")
+                        }
+                    }.trim()
+
+                    let declaration_parts = var_declaration.split(":")
+
+                                        let var_declaration = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    };
+
+                    let var_name = match declaration_parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    }.trim();
+
+                    let var_type = match declaration_parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load variable value")
+                        }
+                    }.trim()
+
+                    ast.lines.push(ASTLine {
+                        verb: Verb::Set,
+                        nouns: vec![var_name.to_string(), var_type.to_string(), val.to_string()],
+                    })
+                },
+                '!' => {    // Mark statement (marker_name!)
+                    ast.lines.push(ASTLine {
+                        verb: Verb::Mark,
+                        nouns: vec![simplified_line.trim()],
+                    })
+                }
+                _ => {      // Return statement (var_name)
+                    ast.lines.push(ASTLine {
+                        verb: Verb::Return,
+                        nouns: vec![simplified_line.trim(), type_of],
+                    })
+                }
+            }
+        }
+
+        self.environment.vars.insert(function_name, ast)
     }
 
-    // Handle imports, load functions to AST, and handle loading constants to enviorenment
+    // Handle imports, load functions to AST, and handle loading constants to environment
     //**NOTE:** The AST must also break down if else statements and stuff into raw do blocks */
-    fn load_function_AST(&self, env: &Enviorenment) -> () {
+    fn load_function_AST(&self, env: Environment) -> () {
         let lines = file_contents.split("\n"); // iterator
         
-        let next_line = lines.next();
+        let mut next_line = lines.next();
 
         while let Some(line) = next_line {  // Using while loop instead of traditional for_loop to add flexibility for looking ahead in the iterator
             if line == "" {
@@ -186,24 +280,120 @@ impl ASTGenerator {
 
             match suffix {
                 ';' => {    // Declarative line (x = 0)
+                    let parts = line.split("=")
 
+                    let var_declaration = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    };
+
+                    let val = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load variable value")
+                        }
+                    }.trim()
+
+                    let declaration_parts = var_declaration.split(":")
+
+                                        let var_declaration = match parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    };
+
+                    let var_name = match declaration_parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load first half of declaration")
+                        }
+                    }.trim();
+
+                    let var_type = match declaration_parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load variable value")
+                        }
+                    }.trim()
+
+                    self.environment.vars.insert(var_name, Value::parse(val, var_type));
                 },
                 '{' => {    // Constructive line (if, function, etc.)
-                    
+                    // Extract return type of function & parameters (syntax: function_name: return_type (param1: type, param2: type))
+                    let parts = next_line.split("(");
+                    let traits = match parts.next() {
+                        Some(val) => val,
+                        None => panic!("Failed to load function traits")
+                    }
+                    let params_string = match parts.next() {
+                        Some(val) => val,
+                        None => panic!("Failed to load function params")
+                    }
+
+                    let split_params = parts.split(",");
+                    let params = HashMap<String, String>::new()
+                    while let some(param) = split_params.next() {
+                        let split_param = param.split(",");
+                        let param_name = match split_param.next() {
+                            Some(val) => val,
+                            None => {
+                                panic!("Failed to load param name");
+                            }
+                        };
+                        let param_type = match split_param.next() {
+                            Some(val) => val,
+                            None => {
+                                panic!("Failed to load param name");
+                            }
+                        };
+                        params.insert(param_name, param_type);
+                    }
+
+                    let trait_parts = traits.split(":");
+                    let function_name = match trait_parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load function name")
+                        }
+                    };
+                    let return_type = match trait.parts.next() {
+                        Some(val) => val,
+                        None => {
+                            panic!("Failed to load function return type");
+                        }
+                    };
+
+                    let function_contents = String::new();
+
+                    // Load all lines until closing } to function_contents (**NOTE:** There is no need to worry about sub if, else, switch, statements, as they will use Do marker blocks)
+                    while let Some(next_line) = lines.next() {
+                        if next_line == "}" {
+                            break;
+                        }
+
+                        function_contents += next_line.trim();
+                    }
+
+                    self.fn_to_AST(function_contents, return_type, params, function_name);
                 },
                 '!' => {    // Import
 
                 },
-                _ => {      // Return
-
+                _ => {
+                    panic!("Unknown suffix")
                 }
             };
+
+            next_line = lines.next();   
         }
     }
 }
 
 fn main() {
     let env = Environment::new();   // Generate global environment
-    let generator = ASTGenerator::new();
+    let generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
     generator.load_function_AST(env);   // Load AST to previosly defined env
 }
