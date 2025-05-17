@@ -647,7 +647,10 @@ impl ASTRunner {
 
         env.parent = Rc::new(parent_env);
 
-        for line in lines {
+        let index = 0;
+        let next_line = lines.next()
+
+        while Some(line) = next_line {
             let verb = line.verb;
             let nouns = line.nouns;
 
@@ -670,17 +673,33 @@ impl ASTRunner {
                     evaluated_val
                 },
                 Verb::Mark {
-
+                    // In this case we need to store the line of the marker so that we can effectively reverse back to the position
+                    let marker_name = nouns.get(0);
+                    env.vars.insert(marker_name, Value::Int(index));
                 },
                 Verb::Do {
                     let marker_name = nouns.get(0);
                     let conditional = nouns.get(1);
 
-                    if conditional == "true" || check_conditional(conditional, env) {
-                        
+                    if self::evaluate(conditional) == Value::Bool(true) || self::check_conditional(conditional, env) {
+                        if marker_name.starts_with("~") {
+                            let raw_marker_index = env.vars.get(marker_name[1..])
+
+                            let true_marker_index = match raw_marker_index {
+                                Value::Int(val) => val,
+                                _ => panic!("Provided marker points to a non integer index")
+                            }
+
+                            lines = ast.lines();
+                            lines.skip(true_marker_index);
+                        }
                     }
                 }
             };
+
+            index++;
+
+            next_line = lines.next()
         }
     } 
 }
