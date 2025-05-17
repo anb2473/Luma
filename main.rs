@@ -613,8 +613,8 @@ impl ASTRunner {
             }
             else if check_type.is_none() && !part.contains('=') && !part.contains('<') && !part.contains('>') {
                 match part.split(':').collect::<Vec<&str>>().as_slice() {
-                    [var_type, var_name] => {
-                        check_obj = Some(self.evaluate(var_name, var_type, env.clone()));
+                    [val, var_type] => {
+                        check_obj = Some(self.evaluate(val, var_type, env.clone()));
                     }
                     _ => {
                         panic!("Typeless conditional object: '{}'", part);
@@ -625,8 +625,8 @@ impl ASTRunner {
                 match check_type {
                     Some("==") => {
                         match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [var_type, var_name] => {
-                                let right_value = self.evaluate(var_name, var_type, env.clone());
+                            [val, var_type] => {
+                                let right_value = self.evaluate(val, var_type, env.clone());
                                 current = check_obj.as_ref().unwrap() == &right_value;
                             }
                             _ => {
@@ -638,8 +638,8 @@ impl ASTRunner {
                     }
                     Some("<=") => {
                         match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [var_type, var_name] => {
-                                let right_value = self.evaluate(var_name, var_type, env.clone());
+                            [val, var_type] => {
+                                let right_value = self.evaluate(val, var_type, env.clone());
                                 if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
                                     current = ord != std::cmp::Ordering::Greater;
                                 } else {
@@ -655,8 +655,8 @@ impl ASTRunner {
                     }
                     Some(">=") => {
                         match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [var_type, var_name] => {
-                                let right_value = self.evaluate(var_name, var_type, env.clone());
+                            [val, var_type] => {
+                                let right_value = self.evaluate(val, var_type, env.clone());
                                 if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
                                     current = ord != std::cmp::Ordering::Less;
                                 } else {
@@ -672,8 +672,8 @@ impl ASTRunner {
                     }
                     Some("<") => {
                         match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [var_type, var_name] => {
-                                let right_value = self.evaluate(var_name, var_type, env.clone());
+                            [val, var_type] => {
+                                let right_value = self.evaluate(val, var_type, env.clone());
                                 if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
                                     current = ord == std::cmp::Ordering::Less;
                                 } else {
@@ -689,8 +689,8 @@ impl ASTRunner {
                     }
                     Some(">") => {
                         match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [var_type, var_name] => {
-                                let right_value = self.evaluate(var_name, var_type, env.clone());
+                            [val, var_type] => {
+                                let right_value = self.evaluate(val, var_type, env.clone());
                                 if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
                                     current = ord == std::cmp::Ordering::Greater;
                                 } else {
@@ -790,6 +790,53 @@ impl ASTRunner {
                             };
 
                             index = true_marker_index as usize;
+
+                            continue;
+                        }
+                        
+                        if marker_name.starts_with("*") {
+                            let mut marker_index = 0;
+                            for line in lines {
+                                match line.verb {
+                                    Verb::Mark => {
+                                        let potential_marker_name = match line.nouns.get(0) {
+                                            Some(val) => val,
+                                            None => {
+                                                panic!("Marker without name");
+                                            }   
+                                        };
+            
+                                        if potential_marker_name == marker_name {
+                                            index += marker_index;
+                                            break;
+                                        }
+                                    }
+                                    _ => marker_index += 1,
+                                }
+                            }
+
+                            continue;
+                        }
+
+                        let mut marker_index = 0;
+                        for line in &lines[index..] {
+                            match line.verb {
+                                Verb::Mark => {
+                                    let potential_marker_name = match line.nouns.get(0) {
+                                        Some(val) => val,
+                                        None => {
+                                            panic!("Marker without name");
+                                        }   
+                                    };
+        
+                                    if potential_marker_name == marker_name {
+                                        index += marker_index;
+                                        break;
+                                    }
+                                }
+                                _ => marker_index += 1,
+                            }
+
                         }
                     }
                 }
