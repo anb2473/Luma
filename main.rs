@@ -451,6 +451,240 @@ impl ASTGenerator {
     }
 }
 
+struct ASTRuner {
+    ast: AST,
+}
+
+impl ASTRunner {
+    fn new(ast: AST) -> Self {
+        ASTRunner {
+            ast: ast,
+        }
+    }
+
+    fn evaluate(&self, value: &str, var_type: &str, env: Enviorenment) -> Value {
+        match var_type {
+            "int" => {
+                let int_value = match value.parse::<i32>() {
+                    Some(val) => Value::Int(val), 
+                    None => {
+                        env.search_for_var(value)
+                    }
+                };
+            },
+            "float" => {
+                 let int_value = match value.parse::<f64>() {
+                    Some(val) => Value::Float(val), 
+                    None => {
+                        env.search_for_var(value)
+                    }
+                };
+            },
+            "bool" => {
+                if value == "true" {
+                    Value::Bool(true)
+                }
+                if value == "false" {
+                    Value::Bool(false)
+                }
+                let env_search = env.search_for_var(value);
+                match env_search {
+                    Value::None => self.check_conditional(value, env),
+                    _ => env_search,
+                };
+            }
+        };
+
+        if value == "none" {
+            Value::Null
+        }
+    }
+
+    fn check_conditional(&self, conditional: &str, env: Enviorenment) -> bool {
+        let parts: Vec<&str> = conditional[3..].split(' ').collect();
+        if parts == [""] {
+            panic!("Conditional without body: '{}'", conditional);
+        }
+
+        let mut final_result = false;
+        let mut check_type: Option<&str> = None;
+        let mut check_obj: Option<Value> = None;
+        let mut upper_check: Option<&str> = None;
+        let upper_checks = ["and", "or"];
+        let tags = ["not"];
+        let mut tag: Option<&str> = None;
+        let mut current = false;
+
+        for part in parts {
+            // PART CONTAINS = (IS A CONDITION)
+            if part.contains('=') || part.contains('<') || part.contains('>') {
+                check_type = Some(part);
+            }
+            // PART IS A CONNECTING CHECK BETWEEN CONDITIONALS
+            else if upper_checks.contains(&part) {
+                upper_check = Some(part);
+            }
+            // PART IS A TAG (i.e., not)
+            else if tags.contains(&part) {
+                tag = Some(part);
+            }
+            // PART IS NOT A CHECK TYPE AND CHECK TYPE IS NOT SET (PART IS A CHECK OBJECT)
+            else if check_type.is_none() && !part.contains('=') && !part.contains('<') && !part.contains('>') {
+                match part.split(':').collect::<Vec<&str>>().as_slice() {
+                    [var_type, var_name] => {
+                        check_obj = Some(self.evaluate(var_type, var_name, env, line_num));
+                    }
+                    _ => {
+                        panic!("Typeless conditional object: '{}'", part);
+                    }
+                }
+            }
+            // PART IS A CHECK CONDITION
+            else {
+                match check_type {
+                    Some("==") => {
+                        match part.split(':').collect::<Vec<&str>>().as_slice() {
+                            [var_type, var_name] => {
+                                let right_value = self.evaluate(var_type, var_name, env, line_num);
+                                current = check_obj.as_ref().unwrap() == &right_value;
+                            }
+                            _ => {
+                                panic!("Typeless conditional check: '{}'", part);
+                            }
+                        }
+                        check_type = None;
+                        check_obj = None;
+                    }
+                    Some("<=") => {
+                        match part.split(':').collect::<Vec<&str>>().as_slice() {
+                            [var_type, var_name] => {
+                                let right_value = self.evaluate(var_type, var_name, env, line_num);
+                                current = check_obj.as_ref().unwrap() <= &right_value;
+                            }
+                            _ => {
+                                panic!("Typeless conditional check: '{}'", part);
+                            }
+                        }
+                        check_type = None;
+                        check_obj = None;
+                    }
+                    Some(">=") => {
+                        match part.split(':').collect::<Vec<&str>>().as_slice() {
+                            [var_type, var_name] => {
+                                let right_value = self.evaluate(var_type, var_name, env, line_num);
+                                current = check_obj.as_ref().unwrap() >= &right_value;
+                            }
+                            _ => {
+                                panic!("Typeless conditional check: '{}'", part);
+                            }
+                        }
+                        check_type = None;
+                        check_obj = None;
+                    }
+                    Some("<") => {
+                        match part.split(':').collect::<Vec<&str>>().as_slice() {
+                            [var_type, var_name] => {
+                                let right_value = self.evaluate(var_type, var_name, env, line_num);
+                                current = check_obj.as_ref().unwrap() < &right_value;
+                            }
+                            _ => {
+                                panic!("Typeless conditional check: '{}'", part);
+                            }
+                        }
+                        check_type = None;
+                        check_obj = None;
+                    }
+                    Some(">") => {
+                        match part.split(':').collect::<Vec<&str>>().as_slice() {
+                            [var_type, var_name] => {
+                                let right_value = self.evaluate(var_type, var_name, env, line_num);
+                                current = check_obj.as_ref().unwrap() > &right_value;
+                            }
+                            _ => {
+                                panic!("Typeless conditional check: '{}'", part);
+                            }
+                        }
+                        check_type = None;
+                        check_obj = None;
+                    }
+                    _ => {}
+                }
+
+                if tag == Some("not") {
+                    current = !current;
+                }
+                tag = None;
+
+                match upper_check {
+                    None => {
+                        final_result = current;
+                    }
+                    Some("and") => {
+                        final_result = final_result && current;
+                    }
+                    Some("or") => {
+                        final_result = final_result || current;
+                    }
+                    Some("xor") => {
+                        final_result = final_result ^ current;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        final_result
+    }
+
+    fn run(&mut self, parent_env: Enviorenment) -> Value {
+        let lines = ast.lines;
+
+        let env = Enviorenment::new();
+        
+        // Load params to env
+        let params = ast.parmas;
+        env.vars.extend(params);
+
+        env.parent = Rc::new(parent_env);
+
+        for line in lines {
+            let verb = line.verb;
+            let nouns = line.nouns;
+
+            match verb {
+                Verb::Set {
+                    let var_name = nouns.get(0);
+                    let var_type = nouns.get(1);
+                    let val = nouns.get(2);
+
+                    let evaluated_val = self.evaluate(val, var_type, env);
+
+                    env.vars.insert(var_name, evaluated_val)
+                },
+                Verb::Return {
+                    let val = nouns.get(0);
+                    let val_type = nouns.get(1);
+
+                    let evaluated_val = self.evaluate(val, val_type, env);
+
+                    evaluated_val
+                },
+                Verb::Mark {
+
+                },
+                Verb::Do {
+                    let marker_name = nouns.get(0);
+                    let conditional = nouns.get(1);
+
+                    if conditional == "true" || check_conditional(conditional, env) {
+                        
+                    }
+                }
+            };
+        }
+    } 
+}
+
 fn main() {
     let env = Environment::new();   // Generate global environment
     let mut generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
