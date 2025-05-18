@@ -83,8 +83,7 @@ enum Value {
     Str(String),
     Bool(bool),
     List(Vec<Value>),
-    FunctionRef(Box<dyn CloneFn>),   // Holds a function reference (This will allow for you to call Rust functions) **NOTE:** Function takes in vec
-    ASTRef(AST), // Holds a function reference (This will allow for you to call Luma functions)
+    ASTRef(AST), // Holds a function reference (This will allow for you to call Luma functions), **NOTE:** Rust functions are called as entire files
     Environment(Rc<Environment>),   // Holds a smart pointer to an environment (for classes)
     Undefined,
     Null,
@@ -184,20 +183,6 @@ impl Value {
         }
     }
 
-    pub fn parse(input: &str, type_of: &str) -> Value {
-        match type_of {
-            "int" => Self::parse_int(input),
-            "str" => Self::parse_str(input),
-            "float" => Self::parse_float(input),
-            "bool" => Self::parse_bool(input),
-            _ => {
-                panic!("Unknown type {}", type_of);
-            }
-        };
-
-        Value::Null
-    }
-
     pub fn print_value(&self) -> String {
         match self {
             Value::Int(i) => i.to_string(),
@@ -215,7 +200,6 @@ impl Value {
                 result.push(']');
                 result
             },
-            Value::FunctionRef(_) => String::from("<function>"),
             Value::ASTRef(_) => String::from("<ast>"),
             Value::Environment(_) => String::from("<environment>"),
             Value::Undefined => String::from("undefined"),
@@ -230,7 +214,6 @@ impl Value {
             Value::Str(_) => String::from("string"),
             Value::Bool(_) => String::from("bool"),
             Value::List(_) => String::from("list"),
-            Value::FunctionRef(_) => String::from("function"),
             Value::ASTRef(_) => String::from("ast"),
             Value::Environment(_) => String::from("environment"),
             Value::Undefined => String::from("undefined"),
@@ -239,6 +222,222 @@ impl Value {
     }
 }
 
+fn evaluate(value: &str, var_type: &str, env: Option<Environment>) -> Value {
+    // First check if we have an environment and if the value exists in it
+    if let Some(ref env) = env {
+        let env_search = env.search_for_var(value.to_string());
+        if env_search != Value::Undefined {
+            return env_search;
+        }
+    }
+
+    // If no environment or value not found, proceed with normal evaluation
+    match var_type {
+        "int" => {
+            match value.parse::<i32>() {
+                Ok(val) => Value::Int(val),
+                Err(err) => panic!(err)
+            }
+        },
+        "float" => {
+            match value.parse::<f64>() {
+                Ok(val) => Value::Float(val),
+                Err(err) => panic!(err)
+            }
+        },
+        "bool" => {
+            if value.starts_with("if") {
+                // For conditional expressions, we need the environment
+                if let Some(env) = env {
+                    // We'll need to implement check_conditional as a standalone function
+                    Value::Bool(check_conditional(value, env))
+                } else {
+                    panic!("Conditional expression requires environment");
+                }
+            } else if value == "true" {
+                Value::Bool(true)
+            } else if value == "false" {
+                Value::Bool(false)
+            } else {
+                Value::Undefined
+            }
+        },
+        "str" => {
+            Value::Str(value.trim().to_string())
+        },
+        "list" => {
+            let vec_value = value
+                .split(',')
+                .filter_map(|s| {
+                    let mut parts = s.split(':').map(str::trim);
+                    let key = parts.next()?;
+                    let val = parts.next()?;
+                    Some(evaluate(val, key, env.clone()))
+                })
+                .collect();
+
+            Value::List(vec_value)
+        }
+        "undefined" => {
+            Value::Undefined
+        }
+        "env" => {
+            Value::Environment(Rc::new(Environment::new()))
+        }
+        "none" => {
+            Value::Null
+        },
+        _ => Value::Undefined
+    }
+}
+
+// Move check_conditional to be a standalone function
+fn check_conditional(conditional: &str, env: Environment) -> bool {
+    let parts: Vec<&str> = conditional[3..].split(' ').collect();
+    if parts == [""] {
+        panic!("Conditional without body: '{}'", conditional);
+    }
+
+    let mut final_result = false;
+    let mut check_type: Option<&str> = None;
+    let mut check_obj: Option<Value> = None;
+    let mut upper_check: Option<&str> = None;
+    let upper_checks = ["and", "or"];
+    let tags = ["not"];
+    let mut tag: Option<&str> = None;
+    let mut current = false;
+
+    for part in parts {
+        if part.contains('=') || part.contains('<') || part.contains('>') {
+            check_type = Some(part);
+        }
+        else if upper_checks.contains(&part) {
+            upper_check = Some(part);
+        }
+        else if tags.contains(&part) {
+            tag = Some(part);
+        }
+        else if check_type.is_none() && !part.contains('=') && !part.contains('<') && !part.contains('>') {
+            match part.split(':').collect::<Vec<&str>>().as_slice() {
+                [val, var_type] => {
+                    check_obj = Some(evaluate(val, var_type, Some(env.clone())));
+                }
+                _ => {
+                    panic!("Typeless conditional object: '{}'", part);
+                }
+            }
+        }
+        else {
+            match check_type {
+                Some("==") => {
+                    match part.split(':').collect::<Vec<&str>>().as_slice() {
+                        [val, var_type] => {
+                            let right_value = evaluate(val, var_type, Some(env.clone()));
+                            current = check_obj.as_ref().unwrap() == &right_value;
+                        }
+                        _ => {
+                            panic!("Typeless conditional check: '{}'", part);
+                        }
+                    }
+                    check_type = None;
+                    check_obj = None;
+                }
+                Some("<=") => {
+                    match part.split(':').collect::<Vec<&str>>().as_slice() {
+                        [val, var_type] => {
+                            let right_value = evaluate(val, var_type, Some(env.clone()));
+                            if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
+                                current = ord != std::cmp::Ordering::Greater;
+                            } else {
+                                current = false;
+                            }
+                        }
+                        _ => {
+                            panic!("Typeless conditional check: '{}'", part);
+                        }
+                    }
+                    check_type = None;
+                    check_obj = None;
+                }
+                Some(">=") => {
+                    match part.split(':').collect::<Vec<&str>>().as_slice() {
+                        [val, var_type] => {
+                            let right_value = evaluate(val, var_type, Some(env.clone()));
+                            if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
+                                current = ord != std::cmp::Ordering::Less;
+                            } else {
+                                current = false;
+                            }
+                        }
+                        _ => {
+                            panic!("Typeless conditional check: '{}'", part);
+                        }
+                    }
+                    check_type = None;
+                    check_obj = None;
+                }
+                Some("<") => {
+                    match part.split(':').collect::<Vec<&str>>().as_slice() {
+                        [val, var_type] => {
+                            let right_value = evaluate(val, var_type, Some(env.clone()));
+                            if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
+                                current = ord == std::cmp::Ordering::Less;
+                            } else {
+                                current = false;
+                            }
+                        }
+                        _ => {
+                            panic!("Typeless conditional check: '{}'", part);
+                        }
+                    }
+                    check_type = None;
+                    check_obj = None;
+                }
+                Some(">") => {
+                    match part.split(':').collect::<Vec<&str>>().as_slice() {
+                        [val, var_type] => {
+                            let right_value = evaluate(val, var_type, Some(env.clone()));
+                            if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
+                                current = ord == std::cmp::Ordering::Greater;
+                            } else {
+                                current = false;
+                            }
+                        }
+                        _ => {
+                            panic!("Typeless conditional check: '{}'", part);
+                        }
+                    }
+                    check_type = None;
+                    check_obj = None;
+                }
+                _ => {}
+            }
+
+            if tag == Some("not") {
+                current = !current;
+            }
+            tag = None;
+
+            match upper_check {
+                None => {
+                    final_result = current;
+                }
+                Some("and") => {
+                    final_result = final_result && current;
+                }
+                Some("or") => {
+                    final_result = final_result || current;
+                }
+                Some("xor") => {
+                    final_result = final_result ^ current;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    final_result
+}
 
 // **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
 // Before following the pointers to each parent environment and searching for the value there
@@ -448,10 +647,7 @@ impl ASTGenerator {
                         }
                     }.trim();
 
-                    vars.insert(var_name.to_string(), Value::parse(val, var_type));      
-                    // PLAN: INSTEAD OF USING Value::parse REMOVE THE PARSE FUNCTION AND INSTEAD:
-                    // Make the evaluate function static, and make this call the static foo
-                    // And make a copy of the eval functoon in the ASTRunner which first checks for an existing var   
+                    vars.insert(var_name.to_string(), evaluate(val, var_type, None));  
                 },
                 '{' => {    // Constructive line (if, function, etc.)
                     // Extract return type of function & parameters (syntax: function_name: return_type (param1: type, param2: type))
@@ -546,192 +742,6 @@ impl ASTRunner {
         }
     }
 
-    fn evaluate(&self, value: &str, var_type: &str, env: Environment) -> Value {
-        // Early return for "none"
-        if value == "none" {
-            return Value::Null;
-        }
-
-        let env_search = env.search_for_var(value.to_string());
-        match env_search {
-            Value::Undefined => {
-                match var_type {
-                    "int" => {
-                        match value.parse::<i32>() {
-                            Ok(val) => Value::Int(val),
-                            Err(_) => env.search_for_var(value.to_string())
-                        }
-                    },
-                    "float" => {
-                        match value.parse::<f64>() {
-                            Ok(val) => Value::Float(val),
-                            Err(_) => env.search_for_var(value.to_string())
-                        }
-                    },
-                    "bool" => {
-                        if value == "true" {
-                            return Value::Bool(true);
-                        }
-                        if value == "false" {
-                            return Value::Bool(false);
-                        }
-                        let env_search = env.search_for_var(value.to_string());
-                        Value::Bool(self.check_conditional(value, env))
-                    },
-                    _ => Value::Undefined
-                }
-            }
-            _ => env_search,
-        }
-    }
-
-    fn check_conditional(&self, conditional: &str, env: Environment) -> bool {
-        let parts: Vec<&str> = conditional[3..].split(' ').collect();
-        if parts == [""] {
-            panic!("Conditional without body: '{}'", conditional);
-        }
-
-        let mut final_result = false;
-        let mut check_type: Option<&str> = None;
-        let mut check_obj: Option<Value> = None;
-        let mut upper_check: Option<&str> = None;
-        let upper_checks = ["and", "or"];
-        let tags = ["not"];
-        let mut tag: Option<&str> = None;
-        let mut current = false;
-
-        for part in parts {
-            if part.contains('=') || part.contains('<') || part.contains('>') {
-                check_type = Some(part);
-            }
-            else if upper_checks.contains(&part) {
-                upper_check = Some(part);
-            }
-            else if tags.contains(&part) {
-                tag = Some(part);
-            }
-            else if check_type.is_none() && !part.contains('=') && !part.contains('<') && !part.contains('>') {
-                match part.split(':').collect::<Vec<&str>>().as_slice() {
-                    [val, var_type] => {
-                        check_obj = Some(self.evaluate(val, var_type, env.clone()));
-                    }
-                    _ => {
-                        panic!("Typeless conditional object: '{}'", part);
-                    }
-                }
-            }
-            else {
-                match check_type {
-                    Some("==") => {
-                        match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [val, var_type] => {
-                                let right_value = self.evaluate(val, var_type, env.clone());
-                                current = check_obj.as_ref().unwrap() == &right_value;
-                            }
-                            _ => {
-                                panic!("Typeless conditional check: '{}'", part);
-                            }
-                        }
-                        check_type = None;
-                        check_obj = None;
-                    }
-                    Some("<=") => {
-                        match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [val, var_type] => {
-                                let right_value = self.evaluate(val, var_type, env.clone());
-                                if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
-                                    current = ord != std::cmp::Ordering::Greater;
-                                } else {
-                                    current = false;
-                                }
-                            }
-                            _ => {
-                                panic!("Typeless conditional check: '{}'", part);
-                            }
-                        }
-                        check_type = None;
-                        check_obj = None;
-                    }
-                    Some(">=") => {
-                        match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [val, var_type] => {
-                                let right_value = self.evaluate(val, var_type, env.clone());
-                                if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
-                                    current = ord != std::cmp::Ordering::Less;
-                                } else {
-                                    current = false;
-                                }
-                            }
-                            _ => {
-                                panic!("Typeless conditional check: '{}'", part);
-                            }
-                        }
-                        check_type = None;
-                        check_obj = None;
-                    }
-                    Some("<") => {
-                        match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [val, var_type] => {
-                                let right_value = self.evaluate(val, var_type, env.clone());
-                                if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
-                                    current = ord == std::cmp::Ordering::Less;
-                                } else {
-                                    current = false;
-                                }
-                            }
-                            _ => {
-                                panic!("Typeless conditional check: '{}'", part);
-                            }
-                        }
-                        check_type = None;
-                        check_obj = None;
-                    }
-                    Some(">") => {
-                        match part.split(':').collect::<Vec<&str>>().as_slice() {
-                            [val, var_type] => {
-                                let right_value = self.evaluate(val, var_type, env.clone());
-                                if let Some(ord) = check_obj.as_ref().unwrap().partial_cmp(&right_value) {
-                                    current = ord == std::cmp::Ordering::Greater;
-                                } else {
-                                    current = false;
-                                }
-                            }
-                            _ => {
-                                panic!("Typeless conditional check: '{}'", part);
-                            }
-                        }
-                        check_type = None;
-                        check_obj = None;
-                    }
-                    _ => {}
-                }
-
-                if tag == Some("not") {
-                    current = !current;
-                }
-                tag = None;
-
-                match upper_check {
-                    None => {
-                        final_result = current;
-                    }
-                    Some("and") => {
-                        final_result = final_result && current;
-                    }
-                    Some("or") => {
-                        final_result = final_result || current;
-                    }
-                    Some("xor") => {
-                        final_result = final_result ^ current;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        final_result
-    }
-
     fn run(&mut self, parent_env: Environment, param_string: HashMap<String, String>) -> Value {
         let lines = &self.ast.lines;
         let mut env = Environment::new();
@@ -745,7 +755,7 @@ impl ASTRunner {
                 None => panic!("Non existent parameter \"{}\"", param)
             };
 
-            let true_val = self.evaluate(string_val.as_str(), type_of, env.clone());
+            let true_val = evaluate(string_val.as_str(), type_of, Some(env.clone()));
             params.insert(param, true_val);
         }
 
@@ -760,14 +770,14 @@ impl ASTRunner {
                     let var_type = line.nouns.get(1).unwrap();
                     let val = line.nouns.get(2).unwrap();
 
-                    let evaluated_val = self.evaluate(val, var_type, env.clone());
+                    let evaluated_val = evaluate(val, var_type, Some(env.clone()));
                     env.vars.insert(var_name.clone(), evaluated_val);
                 },
                 Verb::Return => {
                     let val = line.nouns.get(0).unwrap();
                     let val_type = line.nouns.get(1).unwrap();
 
-                    let evaluated_val = self.evaluate(val, val_type, env.clone());
+                    let evaluated_val = evaluate(val, val_type, Some(env.clone()));
                     return evaluated_val;
                 },
                 Verb::Mark => {
@@ -778,8 +788,8 @@ impl ASTRunner {
                     let marker_name = line.nouns.get(0).unwrap();
                     let conditional = line.nouns.get(1).unwrap();
 
-                    if self.evaluate(conditional, "bool", env.clone()) == Value::Bool(true) || 
-                       self.check_conditional(conditional, env.clone()) {
+                    if evaluate(conditional, "bool", Some(env.clone())) == Value::Bool(true) || 
+                       check_conditional(conditional, env.clone()) {
                         if marker_name.starts_with("~") {
                             let raw_marker_index = env.vars.get(&marker_name[1..]);
 

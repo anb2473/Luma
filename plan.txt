@@ -1,0 +1,13 @@
+Luma Language
+Luma Core
+Schema Structure Manager
+Gaze Program Analyzer / Linter
+Viper Server
+Aurora Frontend Viper Desktop Application Packager
+Axiom Transpiler
+Nexus IDE
+Vector Package Manager
+Quasar Rust Packager (Luma -> Rust)
+
+Epoch Version Control
+Glyph Documentation Generator

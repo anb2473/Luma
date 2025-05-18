@@ -1,9 +1,10 @@
-y: int = 23123132;
+y: str = Hello World;   // **Note:** You do not need to wrap str's
 
 main: int (y: int) {   // The interpreter reads the { at the end of the function declaration, implying that it is a function
                        // When the interpreter reaches a function, it opens up a var to store the lines
 
     x: float = 10.7823;        // Semicolons for setting a value, interpreter reads the 'int' type, and can from there derive that it needs to call parse int on the noun
+                               // Write $x instead to declare a constant variable (the interpreter will not handle a variable case)
 
     my_marker if x:int < 120:int?  // Jump to my_marker if x < 120, WRITE ~my_marker TO TELL THE INTERPRETER TO LOOK FOR THE MARKER INDEX
                                     // WRITE *my_marker TO TELL THE INTERPRETER TO SCAN THE ENTIRE FILE FOR THE MARKER
