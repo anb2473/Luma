@@ -270,7 +270,7 @@ impl Environment {
         }
         
         // If no value is found in any environment, return Null
-        Value::Null
+        Value::Undefined
     }
 }
 
@@ -382,8 +382,6 @@ impl ASTGenerator {
             next_line = lines.next();
         }
 
-        println!("{:?}", ast);
-
         (function_name, Value::ASTRef(ast))
     }
 
@@ -407,6 +405,8 @@ impl ASTGenerator {
                 continue;
             }
 
+            let simplified_line = &line[0..line.len() - 1]; // Remove suffix
+
             let suffix = match line.chars().last() {
                 Some(val) => val,
                 None => panic!("Failed to read suffix")
@@ -416,7 +416,7 @@ impl ASTGenerator {
 
             match suffix {
                 ';' => {    // Declarative line (x = 0)
-                    let mut parts = line.split("=");
+                    let mut parts = simplified_line.split("=");
 
                     let var_declaration = match parts.next() {
                         Some(val) => val,
@@ -434,19 +434,12 @@ impl ASTGenerator {
 
                     let mut declaration_parts = var_declaration.split(":");
 
-                                        let var_declaration = match parts.next() {
-                        Some(val) => val,
+                    let var_name = match declaration_parts.next() {
+                        Some(val) => val.trim(),
                         None => {
                             panic!("Failed to load first half of declaration")
                         }
                     };
-
-                    let var_name = match declaration_parts.next() {
-                        Some(val) => val,
-                        None => {
-                            panic!("Failed to load first half of declaration")
-                        }
-                    }.trim();
 
                     let var_type = match declaration_parts.next() {
                         Some(val) => val,
@@ -455,7 +448,10 @@ impl ASTGenerator {
                         }
                     }.trim();
 
-                    vars.insert(var_name.to_string(), Value::parse(val, var_type));         
+                    vars.insert(var_name.to_string(), Value::parse(val, var_type));      
+                    // PLAN: INSTEAD OF USING Value::parse REMOVE THE PARSE FUNCTION AND INSTEAD:
+                    // Make the evaluate function static, and make this call the static foo
+                    // And make a copy of the eval functoon in the ASTRunner which first checks for an existing var   
                 },
                 '{' => {    // Constructive line (if, function, etc.)
                     // Extract return type of function & parameters (syntax: function_name: return_type (param1: type, param2: type))
@@ -556,33 +552,36 @@ impl ASTRunner {
             return Value::Null;
         }
 
-        match var_type {
-            "int" => {
-                match value.parse::<i32>() {
-                    Ok(val) => Value::Int(val),
-                    Err(_) => env.search_for_var(value.to_string())
+        let env_search = env.search_for_var(value.to_string());
+        match env_search {
+            Value::Undefined => {
+                match var_type {
+                    "int" => {
+                        match value.parse::<i32>() {
+                            Ok(val) => Value::Int(val),
+                            Err(_) => env.search_for_var(value.to_string())
+                        }
+                    },
+                    "float" => {
+                        match value.parse::<f64>() {
+                            Ok(val) => Value::Float(val),
+                            Err(_) => env.search_for_var(value.to_string())
+                        }
+                    },
+                    "bool" => {
+                        if value == "true" {
+                            return Value::Bool(true);
+                        }
+                        if value == "false" {
+                            return Value::Bool(false);
+                        }
+                        let env_search = env.search_for_var(value.to_string());
+                        Value::Bool(self.check_conditional(value, env))
+                    },
+                    _ => Value::Undefined
                 }
-            },
-            "float" => {
-                match value.parse::<f64>() {
-                    Ok(val) => Value::Float(val),
-                    Err(_) => env.search_for_var(value.to_string())
-                }
-            },
-            "bool" => {
-                if value == "true" {
-                    return Value::Bool(true);
-                }
-                if value == "false" {
-                    return Value::Bool(false);
-                }
-                let env_search = env.search_for_var(value.to_string());
-                match env_search {
-                    Value::Null => Value::Bool(self.check_conditional(value, env)),
-                    _ => env_search,
-                }
-            },
-            _ => Value::Undefined
+            }
+            _ => env_search,
         }
     }
 

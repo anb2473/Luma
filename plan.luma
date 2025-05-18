@@ -1,3 +1,5 @@
+y: int = 23123132;
+
 main: int (y: int) {   // The interpreter reads the { at the end of the function declaration, implying that it is a function
                        // When the interpreter reaches a function, it opens up a var to store the lines
 
@@ -9,9 +11,8 @@ main: int (y: int) {   // The interpreter reads the { at the end of the function
     x                 // No semicolons for returning, types are stored when a variable is defined, so when generating the AST the interpreter knows which type to insert
     
     my_marker!          // Declare my_marker
+
+    y
 }                      // When the interpreter reaches a line with a suffix of } it generates an AST off the var and cleans the var
 
-// AST Representation of main
-
-// [SET, x, int, 0]
-// [RETURN, x, int]
+// RETURNS undefined (Explanation, you skip over the return x statement as x < 120, and as such don't return anything)
