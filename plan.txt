@@ -11,3 +11,10 @@ Quasar Rust Packager (Luma -> Rust)
 
 Epoch Version Control
 Glyph Documentation Generator
+
+CALLING RUST FUNCTIONS:
+    1. Load the directory contents from the filepath, which should be stored in the Luma directory
+    2. Load the .pkignore file to a hash set of names
+    3. For each file in the directory, check if its in the hash set, and if not load it to an imports hash map
+        **NOTE** The packages are stored as a hashmap of package names to a hashmap of filenames to file paths
+    4. Whenever referenced, search for the path, and if found execute rust file if rust or luma file if luma, and then return a Vec of STDOUT and STDERR

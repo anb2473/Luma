@@ -1,10 +1,40 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::path::{Path};
-use std::fs::{File};
-use std::{io};
-use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::fs::{self, File}; 
+use std::io::{self, Read, Write};
 use std::fmt::Debug;
+use serde_json::{Result as JsonResult}; 
+use serde_json::Value as JsonValue;
+use serde::{Serialize};
+
+fn get_file_name<P: AsRef<Path>>(path: P) -> Option<String> {
+    path.as_ref()
+        .file_stem()             // Gets the file name without extension
+        .and_then(|s| s.to_str()) // Convert OsStr to &str
+        .map(|s| s.to_string())   // Convert to String
+}
+
+/// Reads a JSON file at the given path and returns a HashMap
+fn read_json<P: AsRef<Path>>(path: P) -> Result<HashMap<String, JsonValue>, io::Error> {
+    let file_content = fs::read_to_string(path)?;
+    let map: HashMap<String, JsonValue> = serde_json::from_str(&file_content)?;
+    Ok(map)
+}
+
+fn list_files<P: AsRef<Path>>(dir: P) -> io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+
+    Ok(files)
+}
 
 // We need to integratea  custom implementation of Clone for the fn (Vec) for the Value to work properly
 // Trait that is both Fn and Clone
@@ -50,11 +80,53 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
     Ok(()) // Return Ok if successful
 }
 
+fn execute_rust_program(file_path: &str, args: Vec<Value>, env) -> Result<String, io::Error> {
+    // Serialize all arguments
+    let serialized_args: Vec<String> = args.iter().map(|v| v.serialize()).collect();
+    
+    // Get the executable path by removing .rs extension
+    let executable_path = file_path.trim_end_matches(".rs");
+    
+    // First compile the Rust file
+    let compile_output = std::process::Command::new("rustc")
+        .arg(file_path)
+        .output()?;
+
+    if !compile_output.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_output.stderr).to_string();
+        return Err(io::Error::new(io::ErrorKind::Other, format!("Compilation failed: {}", stderr)));
+    }
+
+    // Then execute the compiled program with the serialized arguments
+    let output = std::process::Command::new(executable_path)
+        .args(&serialized_args)
+        .output()?;
+
+    // Convert output to string
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        let split_stdout = stdout.split(":");
+        let stdout_val = match split_stdout.next() {
+            Some(val) => val,
+            None => panic!("Failed to load stdout value")
+        }
+        let stdout_type = match split_stdout.next() {
+            Some(val) => val,
+            None => panic!("Failed to load stdout type")
+        }
+        Ok(evaluate(stdout_val, stdout_type, env))
+    } else {
+        Err(io::Error::new(io::ErrorKind::Other, stderr))
+    }
+}
+
 // Abstract syntax tree (AST): on compilation all the lines in the functions will be compiled to the AST format before execution
 // AST is a Vec<Vec<String>, Which contains a Vec of lines, with a sub Vec of the parts of the line
 // Each line will be split into a verb and nouns
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 enum Verb {
     Set,     // x = 0;
     Return,  // x
@@ -62,13 +134,13 @@ enum Verb {
     Do,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 struct ASTLine {
     pub verb: Verb,
     pub nouns: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 struct AST {
     pub lines: Vec<ASTLine>,
     pub params: HashMap<String, String>,
@@ -76,7 +148,7 @@ struct AST {
 
 // Value enum will hold all the referencable types
 
-#[derive(Clone)]
+#[derive(Serialize, Clone)]
 enum Value {
     Int(i32),
     Float(f64),
@@ -84,6 +156,7 @@ enum Value {
     Bool(bool),
     List(Vec<Value>),
     ASTRef(AST), // Holds a function reference (This will allow for you to call Luma functions), **NOTE:** Rust functions are called as entire files
+    #[serde(skip)]
     Environment(Rc<Environment>),   // Holds a smart pointer to an environment (for classes)
     Undefined,
     Null,
@@ -139,7 +212,7 @@ impl PartialOrd for Value {
 // For converting raw string nouns to actual values
 
 trait ToValue {
-    fn to_value(Value) -> Value;
+    fn to_value(value: Value) -> Value;
 }
 
 impl Value {
@@ -220,74 +293,172 @@ impl Value {
             Value::Null => String::from("null"),
         }
     }
+
+    pub fn serialize(&self) -> String {
+        match self {
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Str(s) => format!("\"{}\"", s),
+            Value::Bool(b) => b.to_string(),
+            Value::List(l) => {
+                let items: Vec<String> = l.iter().map(|v| v.serialize()).collect();
+                format!("[{}]", items.join(","))
+            },
+            Value::ASTRef(ast) => serde_json::to_string(ast).unwrap_or_else(|_| "null".to_string()),
+            Value::Environment(_) => "null".to_string(), // Skip environment serialization
+            Value::Undefined => "undefined".to_string(),
+            Value::Null => "null".to_string(),
+        }
+    }
 }
 
 fn evaluate(value: &str, var_type: &str, env: Option<Environment>) -> Value {
-    // First check if we have an environment and if the value exists in it
-    if let Some(ref env) = env {
-        let env_search = env.search_for_var(value.to_string());
-        if env_search != Value::Undefined {
-            return env_search;
-        }
-    }
+    if value.ends_with(")") {
+        if let Some(ref env) = env {
+            let mut split_value = value.split("(");
+            let mut ref_name = match split_value.next() {
+                Some(val) => val,
+                None => {
+                    panic!("Failed to load function reference name");
+                },
+            };
 
-    // If no environment or value not found, proceed with normal evaluation
-    match var_type {
-        "int" => {
-            match value.parse::<i32>() {
-                Ok(val) => Value::Int(val),
-                Err(err) => panic!(err)
+            let mut split_fn_name = ref_name.trim().split("::");
+
+            let pk_name = match split_fn_name.next() {
+                Some(val) => val,
+                None => panic!("Failed to load package name")
+            };
+
+            let fn_name = match split_fn_name.next() {
+                Some(val) => val,
+                None => panic!("Failed to load package name")
+            };
+
+            let cloned_env = env.clone().unwrap();
+
+            let pk_fns = match cloned_env.dependencies.get(pk_name) {
+                Some(val) => val,
+                None => panic!("Failed to load package functions")
+            };
+
+            let fn_path = match pk_fns.functionalities.get(fn_name) {
+                Some(val) => val,
+                None => panic!("Failed to load function path")
+            };
+
+            let params = match split_value.next() {
+                Some(val) => val,
+                None => {
+                    panic!("Failed to load parameters");
+                },
+            };
+
+            let mut split_params = params.split(",");
+
+            let mut param_vec: Vec<Value> = Vec::new();
+
+            for param in split_params {
+                let mut split_param = param.split(":");
+                
+                let param_value = match split_param.next() {
+                    Some(val) => val,
+                    None => panic!("Failed to load parameter value")
+                };
+
+                let param_type = match split_param.next() {
+                    Some(val) => val,
+                    None => panic!("Failed to load parameter type")
+                };
+
+                let true_param = evaluate(param_value, param_type, env);
+
+                param_vec.push(true_param);
             }
-        },
-        "float" => {
-            match value.parse::<f64>() {
-                Ok(val) => Value::Float(val),
-                Err(err) => panic!(err)
-            }
-        },
-        "bool" => {
-            if value.starts_with("if") {
-                // For conditional expressions, we need the environment
-                if let Some(env) = env {
-                    // We'll need to implement check_conditional as a standalone function
-                    Value::Bool(check_conditional(value, env))
-                } else {
-                    panic!("Conditional expression requires environment");
+
+            if value.starts_with("#") { // Function is imported (Can be either Rust or Luma)
+                // Execute the Rust program with the parameters
+                match execute_rust_program(fn_path, param_vec, env) {
+                    Ok(output) => output,
+                    Err(err) => panic!("{}", err)
                 }
-            } else if value == "true" {
-                Value::Bool(true)
-            } else if value == "false" {
-                Value::Bool(false)
-            } else {
+            }
+            else {  // Function is defined in the file (MUST be a Luma function)
+                let fn_AST = env.search_for_var(fn_name);
+
+                let fn_params = fn_AST.params;
+
+                let mut runner = ASTRunner::new(fn_AST);
+                let result = runner.run(Environment::new(env), param_vec);     
+            }
+        }
+    } else {
+        // First check if we have an environment and if the value exists in it
+        if let Some(ref env) = env {
+            let env_search = env.search_for_var(value.to_string());
+            if env_search != Value::Undefined {
+                return env_search;
+            }
+        }
+
+        // If no environment or value not found, proceed with normal evaluation
+        match var_type {
+            "int" => {
+                match value.parse::<i32>() {
+                    Ok(val) => Value::Int(val),
+                    Err(err) => panic!("{}", err)
+                }
+            },
+            "float" => {
+                match value.parse::<f64>() {
+                    Ok(val) => Value::Float(val),
+                    Err(err) => panic!("{}", err)
+                }
+            },
+            "bool" => {
+                if value.starts_with("if") {
+                    // For conditional expressions, we need the environment
+                    if let Some(env) = env {
+                        // We'll need to implement check_conditional as a standalone function
+                        Value::Bool(check_conditional(value, env))
+                    } else {
+                        panic!("Conditional expression requires environment");
+                    }
+                } else if value == "true" {
+                    Value::Bool(true)
+                } else if value == "false" {
+                    Value::Bool(false)
+                } else {
+                    Value::Undefined
+                }
+            },
+            "str" => {
+                Value::Str(value.trim().to_string())
+            },
+            "list" => {
+                let vec_value = value
+                    .split(',')
+                    .filter_map(|s| {
+                        let mut parts = s.split(':').map(str::trim);
+                        let key = parts.next()?;
+                        let val = parts.next()?;
+                        Some(evaluate(val, key, env.clone()))
+                    })
+                    .collect();
+
+                Value::List(vec_value)
+            }
+            "undefined" => {
                 Value::Undefined
             }
-        },
-        "str" => {
-            Value::Str(value.trim().to_string())
-        },
-        "list" => {
-            let vec_value = value
-                .split(',')
-                .filter_map(|s| {
-                    let mut parts = s.split(':').map(str::trim);
-                    let key = parts.next()?;
-                    let val = parts.next()?;
-                    Some(evaluate(val, key, env.clone()))
-                })
-                .collect();
-
-            Value::List(vec_value)
+            "env" => {
+                Value::Environment(Rc::new(Environment::new()))
+            }
+            "none" => {
+                Value::Null
+            },
+            _ => Value::Undefined
         }
-        "undefined" => {
-            Value::Undefined
-        }
-        "env" => {
-            Value::Environment(Rc::new(Environment::new()))
-        }
-        "none" => {
-            Value::Null
-        },
-        _ => Value::Undefined
     }
 }
 
@@ -439,21 +610,29 @@ fn check_conditional(conditional: &str, env: Environment) -> bool {
     final_result
 }
 
+#[derive(Serialize, Clone)]
+struct Functionalities {
+    functionalities: HashMap<String, String>,   // Functionsality name to file path
+}
+
 // **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
 // Before following the pointers to each parent environment and searching for the value there
 
-#[derive(Clone)] // Derive Clone if you want to clone instances of Environment
+#[derive(Serialize, Clone)] // Derive Clone if you want to clone instances of Environment
 struct Environment {
     vars: HashMap<String, Value>,    // Var name to Value (from enum) to allow fast look up times
+    #[serde(skip)]
     parent: Option<Rc<Environment>>, // Smart pointer back to parent environment to allow nested environments
+    dependencies: HashMap<String, Functionalities>,     // Stores all of the programs dependencies as hash maps of package names pointing to functionalities
 }
 
 impl Environment {
-    fn new() -> Self {
+    fn new(parent: Rc<Environment>) -> Self {
         // Generate a new clean environment
         Environment {
             vars: HashMap::new(),
-            parent: None,
+            parent: parent,
+            dependencies: HashMap::new(),
         }
     }
 
@@ -613,6 +792,13 @@ impl ASTGenerator {
 
            let line = &line[..line.len()-1];
 
+           let pk_manager = match read_json("pk_manager.json") {
+                Ok(val) => val,
+                Err(err) => {
+                    panic!("{}", err);
+                },
+           };
+
             match suffix {
                 ';' => {    // Declarative line (x = 0)
                     let mut parts = simplified_line.split("=");
@@ -717,7 +903,47 @@ impl ASTGenerator {
                     vars.insert(function_name, AST_ref);
                 },
                 '!' => {    // Import
+                    let pk_name = simplified_line.trim();
+                    let pk_path = match pk_manager.get(pk_name) {
+                        Some(val) => val,
+                        None => {
+                            panic!("Package import not found \"{}\"", pk_name);
+                        },
+                    };
 
+                    let pk_ignore_contents = match read_file(format!("{}\\.pkignore", pk_path).as_str()) {
+                        Ok(val) => val,
+                        Err(err) => {
+                            panic!("{}", err);
+                        },
+                    };
+
+                    let pk_ignore: HashSet<&str> = pk_ignore_contents.lines().map(str::trim).collect(); // HashSet of &str (O(1) efficiency)
+                    
+                    let sub_files = match list_files(pk_path.to_string()) {
+                        Ok(val) => val,
+                        Err(err) => {
+                            panic!("{}", err);
+                        }
+                    };
+
+                    let mut functionalities: HashMap<String, String> = HashMap::new();
+                    for file_buf in sub_files {
+                        if let Some(file) = file_buf.to_str() {
+                            if !pk_ignore.contains(file) {
+                                let file_name = match get_file_name(file) {
+                                    Some(val) => val,
+                                    None => {
+                                        panic!("Failed to extract file name")
+                                    },
+                                };
+                                functionalities.insert(file_name, file.to_string());
+                            }
+                        }
+                    }
+                    self.environment.dependencies.insert(pk_name.to_string(), Functionalities {
+                        functionalities: functionalities,
+                    });
                 },
                 _ => {
                     panic!("Unknown suffix \"{:?}\", line \"{:?}\"", suffix, line)
@@ -859,7 +1085,7 @@ impl ASTRunner {
 }
 
 fn main() {
-    let env = Environment::new();   // Generate global environment
+    let env = Environment::new(None);   // Generate global environment
     let mut generator = ASTGenerator::new("C:\\Users\\austi\\projects\\Luma\\plan.luma", env);
     generator.load_function_AST();   // Load AST using the environment stored in the generator
     let main_foo = match generator.environment.vars.get("main") {
