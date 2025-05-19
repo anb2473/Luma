@@ -80,7 +80,7 @@ fn write_file(file_path: &str, contents: &str) -> Result<(), io::Error> {
     Ok(()) // Return Ok if successful
 }
 
-fn execute_rust_program(file_path: &str, args: Vec<Value>, env) -> Result<String, io::Error> {
+fn execute_rust_program(file_path: &str, args: Vec<Value>, env: Option<Environment>) -> Result<Value, io::Error> {
     // Serialize all arguments
     let serialized_args: Vec<String> = args.iter().map(|v| v.serialize()).collect();
     
@@ -107,15 +107,15 @@ fn execute_rust_program(file_path: &str, args: Vec<Value>, env) -> Result<String
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if output.status.success() {
-        let split_stdout = stdout.split(":");
+        let mut split_stdout = stdout.split(":");
         let stdout_val = match split_stdout.next() {
             Some(val) => val,
             None => panic!("Failed to load stdout value")
-        }
+        };
         let stdout_type = match split_stdout.next() {
             Some(val) => val,
             None => panic!("Failed to load stdout type")
-        }
+        };
         Ok(evaluate(stdout_val, stdout_type, env))
     } else {
         Err(io::Error::new(io::ErrorKind::Other, stderr))
@@ -130,7 +130,7 @@ fn execute_rust_program(file_path: &str, args: Vec<Value>, env) -> Result<String
 enum Verb {
     Set,     // x = 0;
     Return,  // x
-    Mark,  // my_import!
+    Mark,    // my_import!
     Do,
 }
 
@@ -143,7 +143,7 @@ struct ASTLine {
 #[derive(Serialize, Clone, Debug)]
 struct AST {
     pub lines: Vec<ASTLine>,
-    pub params: HashMap<String, String>,
+    pub params: Vec<String>,
 }
 
 // Value enum will hold all the referencable types
@@ -313,8 +313,8 @@ impl Value {
 }
 
 fn evaluate(value: &str, var_type: &str, env: Option<Environment>) -> Value {
-    if value.ends_with(")") {
-        if let Some(ref env) = env {
+    if let Some(ref env) = env {
+        if value.ends_with(")") {
             let mut split_value = value.split("(");
             let mut ref_name = match split_value.next() {
                 Some(val) => val,
@@ -335,9 +335,7 @@ fn evaluate(value: &str, var_type: &str, env: Option<Environment>) -> Value {
                 None => panic!("Failed to load package name")
             };
 
-            let cloned_env = env.clone().unwrap();
-
-            let pk_fns = match cloned_env.dependencies.get(pk_name) {
+            let pk_fns = match env.dependencies.get(pk_name) {
                 Some(val) => val,
                 None => panic!("Failed to load package functions")
             };
@@ -371,94 +369,106 @@ fn evaluate(value: &str, var_type: &str, env: Option<Environment>) -> Value {
                     None => panic!("Failed to load parameter type")
                 };
 
-                let true_param = evaluate(param_value, param_type, env);
+                let true_param = evaluate(param_value, param_type, Option::from(env.clone()));
 
                 param_vec.push(true_param);
             }
 
             if value.starts_with("#") { // Function is imported (Can be either Rust or Luma)
                 // Execute the Rust program with the parameters
-                match execute_rust_program(fn_path, param_vec, env) {
+                return match execute_rust_program(fn_path, param_vec, Option::from(env.clone())) {
                     Ok(output) => output,
-                    Err(err) => panic!("{}", err)
-                }
+                    Err(err) => {
+                        panic!("{}", err);
+                    },
+                };
             }
             else {  // Function is defined in the file (MUST be a Luma function)
-                let fn_AST = env.search_for_var(fn_name);
+                let fn_AST = match env.search_for_var(fn_name.to_string()) {
+                    Value::ASTRef(val) => val,
+                    _ => {
+                        panic!("Attempting to execute non function value as a function");
+                    },
+                };
 
-                let fn_params = fn_AST.params;
+                let fn_params = fn_AST.params.clone();
+
+                // Create a HashMap mapping parameter names to their values
+                let mut param_map: HashMap<String, Value> = HashMap::new();
+                for (param_name, param_value) in fn_params.iter().zip(param_vec.iter()) {
+                    param_map.insert(param_name.clone(), param_value.clone());
+                }
 
                 let mut runner = ASTRunner::new(fn_AST);
-                let result = runner.run(Environment::new(env), param_vec);     
+                let result = runner.run(env.clone(), param_map);
+                return result;
             }
-        }
-    } else {
-        // First check if we have an environment and if the value exists in it
-        if let Some(ref env) = env {
+        } else {
+            // First check if we have an environment and if the value exists in it
             let env_search = env.search_for_var(value.to_string());
             if env_search != Value::Undefined {
                 return env_search;
             }
         }
+    }
 
-        // If no environment or value not found, proceed with normal evaluation
-        match var_type {
-            "int" => {
-                match value.parse::<i32>() {
-                    Ok(val) => Value::Int(val),
-                    Err(err) => panic!("{}", err)
-                }
-            },
-            "float" => {
-                match value.parse::<f64>() {
-                    Ok(val) => Value::Float(val),
-                    Err(err) => panic!("{}", err)
-                }
-            },
-            "bool" => {
-                if value.starts_with("if") {
-                    // For conditional expressions, we need the environment
-                    if let Some(env) = env {
-                        // We'll need to implement check_conditional as a standalone function
-                        Value::Bool(check_conditional(value, env))
-                    } else {
-                        panic!("Conditional expression requires environment");
-                    }
-                } else if value == "true" {
-                    Value::Bool(true)
-                } else if value == "false" {
-                    Value::Bool(false)
-                } else {
-                    Value::Undefined
-                }
-            },
-            "str" => {
-                Value::Str(value.trim().to_string())
-            },
-            "list" => {
-                let vec_value = value
-                    .split(',')
-                    .filter_map(|s| {
-                        let mut parts = s.split(':').map(str::trim);
-                        let key = parts.next()?;
-                        let val = parts.next()?;
-                        Some(evaluate(val, key, env.clone()))
-                    })
-                    .collect();
-
-                Value::List(vec_value)
+    // If no environment or value not found, proceed with normal evaluation
+    match var_type {
+        "int" => {
+            match value.parse::<i32>() {
+                Ok(val) => Value::Int(val),
+                Err(err) => panic!("{}", err)
             }
-            "undefined" => {
+        },
+        "float" => {
+            match value.parse::<f64>() {
+                Ok(val) => Value::Float(val),
+                Err(err) => panic!("{}", err)
+            }
+        },
+        "bool" => {
+            if value.starts_with("if") {
+                // For conditional expressions, we need the environment
+                if let Some(env) = env {
+                    // We'll need to implement check_conditional as a standalone function
+                    Value::Bool(check_conditional(value, env))
+                } else {
+                    panic!("Conditional expression requires environment");
+                }
+            } else if value == "true" {
+                Value::Bool(true)
+            } else if value == "false" {
+                Value::Bool(false)
+            } else {
                 Value::Undefined
             }
-            "env" => {
-                Value::Environment(Rc::new(Environment::new()))
-            }
-            "none" => {
-                Value::Null
-            },
-            _ => Value::Undefined
+        },
+        "str" => {
+            Value::Str(value.trim().to_string())
+        },
+        "list" => {
+            let vec_value = value
+                .split(',')
+                .filter_map(|s| {
+                    let mut parts = s.split(':').map(str::trim);
+                    let key = parts.next()?;
+                    let val = parts.next()?;
+                    Some(evaluate(val, key, env.clone()))
+                })
+                .collect();
+
+            Value::List(vec_value)
         }
+        "undefined" => {
+            Value::Undefined
+        }
+        "env" => {
+            Value::Environment(Rc::new(Environment::new(None)))
+        }
+        "none" => {
+            Value::Null
+        },
+        _ => Value::Undefined
     }
 }
 
@@ -618,16 +628,15 @@ struct Functionalities {
 // **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
 // Before following the pointers to each parent environment and searching for the value there
 
-#[derive(Serialize, Clone)] // Derive Clone if you want to clone instances of Environment
+#[derive(Clone)] // Derive Clone if you want to clone instances of Environment
 struct Environment {
     vars: HashMap<String, Value>,    // Var name to Value (from enum) to allow fast look up times
-    #[serde(skip)]
     parent: Option<Rc<Environment>>, // Smart pointer back to parent environment to allow nested environments
     dependencies: HashMap<String, Functionalities>,     // Stores all of the programs dependencies as hash maps of package names pointing to functionalities
 }
 
 impl Environment {
-    fn new(parent: Rc<Environment>) -> Self {
+    fn new(parent: Option<Rc<Environment>>) -> Self {
         // Generate a new clean environment
         Environment {
             vars: HashMap::new(),
@@ -676,7 +685,7 @@ impl ASTGenerator {
 
         let mut next_line = lines.next();
 
-        let mut ast = AST { lines: Vec::new(), params };
+        let mut ast = AST { lines: Vec::new(), params: Vec::new() };
 
         while let Some(line) = next_line {
             if line == "" {
@@ -850,22 +859,10 @@ impl ASTGenerator {
                     params_string = params_string.trim().to_string();
 
                     let mut split_params = params_string.split(",");
-                    let mut params: HashMap<String, String> = HashMap::new();
+                    let mut params: Vec<String> = Vec::new();
                     while let Some(param) = split_params.next() {
-                        let mut split_param = param.split(":");
-                        let param_name = match split_param.next() {
-                            Some(val) => val,
-                            None => {
-                                panic!("Failed to load param name");
-                            }
-                        };
-                        let param_type = match split_param.next() {
-                            Some(val) => val,
-                            None => {
-                                panic!("Failed to load param type");
-                            }
-                        };
-                        params.insert(param_name.to_string(), param_type.to_string());
+                        let param_name = param.trim();
+                        params.push(param_name.to_string());
                     }
 
                     let mut trait_parts = traits.split(":");
@@ -898,7 +895,7 @@ impl ASTGenerator {
                         function_contents += format!("{}\n", next_line.trim()).as_str();
                     }
 
-                    let (function_name, AST_ref) = Self::fn_to_AST(function_contents, return_type.trim().to_string(), params, function_name.to_string());
+                    let (function_name, AST_ref) = Self::fn_to_AST(function_contents, return_type.trim().to_string(), HashMap::new(), function_name.to_string());
 
                     vars.insert(function_name, AST_ref);
                 },
@@ -968,24 +965,25 @@ impl ASTRunner {
         }
     }
 
-    fn run(&mut self, parent_env: Environment, param_string: HashMap<String, String>) -> Value {
+    fn run(&mut self, parent_env: Environment, params: HashMap<String, Value>) -> Value {
         let lines = &self.ast.lines;
-        let mut env = Environment::new();
+        let mut env = Environment::new(None);
         
         // Load params to env
-        let mut params: HashMap<String, Value> = HashMap::new();
-        let param_types = &self.ast.params;
-        for (param, string_val) in param_string {
-            let type_of = match param_types.get(&param) {
-                Some(val) => val,
-                None => panic!("Non existent parameter \"{}\"", param)
-            };
+        // let mut params: HashMap<String, Value> = HashMap::new();
+        // let param_types = &self.ast.params;
+        // for (param, string_val) in param_string {
+        //     let type_of = match param_types.get(&param) {
+        //         Some(val) => val,
+        //         None => panic!("Non existent parameter \"{}\"", param)
+        //     };
 
-            let true_val = evaluate(string_val.as_str(), type_of, Some(env.clone()));
-            params.insert(param, true_val);
-        }
+        //     let true_val = evaluate(string_val.as_str(), type_of, Some(env.clone()));
+        //     params.insert(param, true_val);
+        // }
 
         env.parent = Some(Rc::new(parent_env));
+        env.vars.extend(params);
 
         let mut index = 0;
 
