@@ -620,11 +620,6 @@ fn check_conditional(conditional: &str, env: Environment) -> bool {
     final_result
 }
 
-#[derive(Serialize, Clone)]
-struct Functionalities {
-    functionalities: HashMap<String, String>,   // Functionsality name to file path
-}
-
 // **NOTE:** When a request for a value in the environment is made the system will start by searching through the raw environment,
 // Before following the pointers to each parent environment and searching for the value there
 
@@ -632,7 +627,7 @@ struct Functionalities {
 struct Environment {
     vars: HashMap<String, Value>,    // Var name to Value (from enum) to allow fast look up times
     parent: Option<Rc<Environment>>, // Smart pointer back to parent environment to allow nested environments
-    dependencies: HashMap<String, Functionalities>,     // Stores all of the programs dependencies as hash maps of package names pointing to functionalities
+    dependencies: HashMap<String, String>,     // Stores all of the programs dependencies as hash maps of file names (function names) to file paths
 }
 
 impl Environment {
@@ -801,12 +796,12 @@ impl ASTGenerator {
 
            let line = &line[..line.len()-1];
 
-           let pk_manager = match read_json("pk_manager.json") {
-                Ok(val) => val,
-                Err(err) => {
-                    panic!("{}", err);
-                },
-           };
+        //    let pk_manager = match read_json("pk_manager.json") {
+        //         Ok(val) => val,
+        //         Err(err) => {
+        //             panic!("{}", err);
+        //         },
+        //    };
 
             match suffix {
                 ';' => {    // Declarative line (x = 0)
@@ -900,47 +895,53 @@ impl ASTGenerator {
                     vars.insert(function_name, AST_ref);
                 },
                 '!' => {    // Import
-                    let pk_name = simplified_line.trim();
-                    let pk_path = match pk_manager.get(pk_name) {
-                        Some(val) => val,
-                        None => {
-                            panic!("Package import not found \"{}\"", pk_name);
-                        },
-                    };
+                    // let pk_name = simplified_line.trim();
+                    // let pk_path = match pk_manager.get(pk_name) {
+                    //     Some(val) => val,
+                    //     None => {
+                    //         panic!("Package import not found \"{}\"", pk_name);
+                    //     },
+                    // };
 
-                    let pk_ignore_contents = match read_file(format!("{}\\.pkignore", pk_path).as_str()) {
-                        Ok(val) => val,
-                        Err(err) => {
-                            panic!("{}", err);
-                        },
-                    };
+                    // let pk_ignore_contents = match read_file(format!("{}\\.pkignore", pk_path).as_str()) {
+                    //     Ok(val) => val,
+                    //     Err(err) => {
+                    //         panic!("{}", err);
+                    //     },
+                    // };
 
-                    let pk_ignore: HashSet<&str> = pk_ignore_contents.lines().map(str::trim).collect(); // HashSet of &str (O(1) efficiency)
+                    // let pk_ignore: HashSet<&str> = pk_ignore_contents.lines().map(str::trim).collect(); // HashSet of &str (O(1) efficiency)
                     
-                    let sub_files = match list_files(pk_path.to_string()) {
-                        Ok(val) => val,
-                        Err(err) => {
-                            panic!("{}", err);
-                        }
-                    };
+                    // let sub_files = match list_files(pk_path.to_string()) {
+                    //     Ok(val) => val,
+                    //     Err(err) => {
+                    //         panic!("{}", err);
+                    //     }
+                    // };
 
-                    let mut functionalities: HashMap<String, String> = HashMap::new();
-                    for file_buf in sub_files {
-                        if let Some(file) = file_buf.to_str() {
-                            if !pk_ignore.contains(file) {
-                                let file_name = match get_file_name(file) {
-                                    Some(val) => val,
-                                    None => {
-                                        panic!("Failed to extract file name")
-                                    },
-                                };
-                                functionalities.insert(file_name, file.to_string());
-                            }
-                        }
-                    }
-                    self.environment.dependencies.insert(pk_name.to_string(), Functionalities {
-                        functionalities: functionalities,
-                    });
+                    // let mut functionalities: HashMap<String, String> = HashMap::new();
+                    // for file_buf in sub_files {
+                    //     if let Some(file) = file_buf.to_str() {
+                    //         if !pk_ignore.contains(file) {
+                    //             let file_name = match get_file_name(file) {
+                    //                 Some(val) => val,
+                    //                 None => {
+                    //                     panic!("Failed to extract file name")
+                    //                 },
+                    //             };
+                    //             functionalities.insert(file_name, file.to_string());
+                    //         }
+                    //     }
+                    // }
+                    // self.environment.dependencies.insert(pk_name.to_string(), Functionalities {
+                    //     functionalities: functionalities,
+                    // });
+
+                    let file_path = simplified_line.trim();
+
+                    let base_name = get_file_name(file_path);
+
+                    self.environment.dependencies.insert(nase_name, file_path);
                 },
                 _ => {
                     panic!("Unknown suffix \"{:?}\", line \"{:?}\"", suffix, line)

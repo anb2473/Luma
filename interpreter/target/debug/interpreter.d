@@ -1,0 +1,1 @@
+C:\Users\austi\projects\Luma\interpreter\target\debug\interpreter.exe: C:\Users\austi\projects\Luma\interpreter\src\main.rs C:\Users\austi\projects\Luma\interpreter\src\parser_core\lexer.rs C:\Users\austi\projects\Luma\interpreter\src\parser_core\value.rs

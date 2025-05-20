@@ -1,0 +1,21 @@
+5 + 7
+
+// Expected:
+
+// Lexer: [Number(5), Add, Number(7)]
+
+// Parser: [{
+//    type: Expression,
+//    {
+//      type: Add,
+//      a: Number(5),
+//      b: Number(7),
+//    }
+// }]
+
+// Executer:
+// 1. View type of first block (expression)
+// 2. View type of first opperation (Add)
+// 3. View type of a (Number)
+// 4. View type of b (Number)
+// 6. Evaluate the combination of a & b
