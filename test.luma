@@ -1,8 +1,8 @@
-5 + 7
+5 + 7 - 2
 
 // Expected:
 
-// Lexer: [Number(5), Add, Number(7)]
+// Lexer (DONE): [Int(5), Add, Int(7), Sub, Int(2)]
 
 // Parser: [{
 //    type: Expression,

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::parser_core::value;
 use crate::parser_core::value::CastTo;
 use crate::parser_core::tokenized;
+use std::collections::HashMap;
 
 // **GOAL:** Read file contents, split the file contents into a Vec of lines, for each line split the line by its parts, and insert types where necessary
 
@@ -19,7 +20,8 @@ fn read_file(file_path: &str) -> Result<String, io::Error> {
 }
 
 pub struct Lexer {
-    file_contents: String,
+    pub file_contents: String,
+    pub tokenized_lines: tokenized::Tokenized,
 }
 
 impl Lexer {
@@ -35,16 +37,63 @@ impl Lexer {
         }
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         // **GOAL:** Loop through every line and convert to a TokenList
-        let split_line = self.file_contents.split("\n");
+        let mut split_line = self.file_contents.split("\n");
 
-        let next_line = split_line.next();
+        let mut next_line = split_line.next();
 
         while let Some(mut line) = next_line {
-            line = line.trim();
+            line = match line.split("//").next() {
+                Some(val) => val,
+                None => panic!("Failed to isolate non comment section of line")
+            };
 
+            line = line.trim();
             
+            if line == "" {
+                next_line = split_line.next();
+                continue;
+            }
+
+            let actions = HashMap::from([
+                ('+', tokenized::Verb::Add),
+                ('-', tokenized::Verb::Sub),
+                ('*', tokenized::Verb::Mult),
+                ('/', tokenized::Verb::Div)
+            ]);
+
+            // Sliding Window approach: loop through each character in the line and reference it with the actions list, O(n) time complexity
+            let mut slider = String::new();
+
+            let mut token_list: Vec<tokenized::Token> = Vec::new();
+
+            for character in line.chars() {
+                if let Some(action) = actions.get(&character) {
+                    if !slider.trim().is_empty() {
+                        token_list.push(tokenized::Token::Noun(value::Value::evaluate(slider.trim().to_string())));
+                    }
+
+                    token_list.push(tokenized::Token::Verb(action.clone()));
+
+                    slider = String::new();
+                    continue;
+                }
+
+                slider.push(character);
+            }
+
+            // Handle the last token if there is one
+            if !slider.trim().is_empty() {
+                token_list.push(tokenized::Token::Noun(value::Value::evaluate(slider.trim().to_string())));
+            }
+
+            // Add the token list to our lines
+            self.tokenized_lines.lines.push(tokenized::TokenList {
+                objects: token_list,
+            });
+
+            next_line = split_line.next();
         }
     }
 }

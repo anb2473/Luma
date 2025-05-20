@@ -1,19 +1,25 @@
 use crate::parser_core::value;
 
-enum Verb {
+#[derive(Clone, Debug)]
+pub enum Verb {
     Add,
-    Return,
+    Sub,
+    Mult,
+    Div,
 }
 
-enum Token {
+#[derive(Debug)]
+pub enum Token {
     Verb(Verb),
     Noun(value::Value),
 }
 
-struct TokenList {
-    objects: Vec<>
+#[derive(Debug)]
+pub struct TokenList {
+    pub objects: Vec<Token>
 }
 
-struct Tokenized {
-    lines: Vec<TokenList>,
+#[derive(Debug)]
+pub struct Tokenized {
+    pub lines: Vec<TokenList>,
 }
