@@ -56,19 +56,36 @@ impl Lexer {
                 continue;
             }
 
+            // Manages all of the special characters in the language
             let actions = HashMap::from([
                 ('+', tokenized::Verb::Add),
                 ('-', tokenized::Verb::Sub),
                 ('*', tokenized::Verb::Mult),
-                ('/', tokenized::Verb::Div)
+                ('/', tokenized::Verb::Div),
+                ('=', tokenized::Verb::Set),
             ]);
+
+            // Check for suffix in the last character
+            let mut chars: Vec<char> = line.chars().collect();
+            let suffix = if let Some(&last_char) = chars.last() {
+                match last_char {
+                    ';' => Some(tokenized::Suffix::Set),
+                    _ => None
+                }
+            } else {
+                None
+            };
+
+            // Remove the last character if it was a suffix
+            if suffix.is_some() {
+                chars.pop();
+            }
 
             // Sliding Window approach: loop through each character in the line and reference it with the actions list, O(n) time complexity
             let mut slider = String::new();
-
             let mut token_list: Vec<tokenized::Token> = Vec::new();
 
-            for character in line.chars() {
+            for character in chars {
                 if let Some(action) = actions.get(&character) {
                     if !slider.trim().is_empty() {
                         token_list.push(tokenized::Token::Noun(value::Value::evaluate(slider.trim().to_string())));
@@ -86,6 +103,11 @@ impl Lexer {
             // Handle the last token if there is one
             if !slider.trim().is_empty() {
                 token_list.push(tokenized::Token::Noun(value::Value::evaluate(slider.trim().to_string())));
+            }
+
+            // Add suffix token if present
+            if let Some(suffix) = suffix {
+                token_list.push(tokenized::Token::Suffix(suffix));
             }
 
             // Add the token list to our lines

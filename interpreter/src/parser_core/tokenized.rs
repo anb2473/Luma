@@ -6,12 +6,19 @@ pub enum Verb {
     Sub,
     Mult,
     Div,
+    Set,
+}
+
+#[derive(Debug)]
+pub enum Suffix {
+    Set,
 }
 
 #[derive(Debug)]
 pub enum Token {
     Verb(Verb),
     Noun(value::Value),
+    Suffix(Suffix),
 }
 
 #[derive(Debug)]
