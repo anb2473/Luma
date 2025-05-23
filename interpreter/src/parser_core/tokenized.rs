@@ -9,7 +9,7 @@ pub enum Verb {
     Set,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Suffix {
     Set,
 }
@@ -18,12 +18,12 @@ pub enum Suffix {
 pub enum Token {
     Verb(Verb),
     Noun(value::Value),
-    Suffix(Suffix),
 }
 
 #[derive(Debug)]
 pub struct TokenList {
-    pub objects: Vec<Token>
+    pub objects: Vec<Token>,
+    pub suffix: Option<Suffix>,
 }
 
 #[derive(Debug)]

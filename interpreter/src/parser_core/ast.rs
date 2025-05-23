@@ -6,6 +6,7 @@ pub enum AST_type {
     Sub,
     Mult,
     Div,
+    Set,
 }
 
 #[derive(Debug)]
@@ -18,7 +19,7 @@ pub enum AST_object {
 pub struct AST_statement {
     pub statement_type: AST_type,
     pub a: AST_object,
-    pub b: Option<AST_object>,
+    pub b: AST_object,
 }
 
 pub struct AST {

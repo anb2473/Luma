@@ -105,14 +105,10 @@ impl Lexer {
                 token_list.push(tokenized::Token::Noun(value::Value::evaluate(slider.trim().to_string())));
             }
 
-            // Add suffix token if present
-            if let Some(suffix) = suffix {
-                token_list.push(tokenized::Token::Suffix(suffix));
-            }
-
             // Add the token list to our lines
             self.tokenized_lines.lines.push(tokenized::TokenList {
                 objects: token_list,
+                suffix: suffix,
             });
 
             next_line = split_line.next();

@@ -1,9 +1,12 @@
+//**NOTE** This functionality is seperated from the runtime value as it includes parsing intermediary types
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Int(i32),
     Str(String),
     Char(char),
     Float(f64),
+    VarName(String),
     Undefined,
 }
 
@@ -26,6 +29,7 @@ impl CastTo<i32> for Value {
             Value::Str(s) => s.parse().ok().map(Value::Int),
             Value::Char(c) => Some(Value::Int(*c as i32)),
             Value::Float(f) => Some(Value::Int(*f as i32)),
+            Value::VarName(_) => None,
             Value::Undefined => None,
         }
     }
@@ -39,6 +43,7 @@ impl CastTo<f64> for Value {
             Value::Str(s) => s.parse().ok().map(Value::Float),
             Value::Char(c) => Some(Value::Float(*c as i32 as f64)),
             Value::Float(f) => Some(Value::Float(*f)),
+            Value::VarName(_) => None,
             Value::Undefined => None,
         }
     }
@@ -52,6 +57,7 @@ impl CastTo<String> for Value {
             Value::Str(s) => Some(Value::Str(s.clone())),
             Value::Char(c) => Some(Value::Str(c.to_string())),
             Value::Float(f) => Some(Value::Str(f.to_string())),
+            Value::VarName(v) => Some(Value::Str(v.clone())),
             Value::Undefined => None,
         }
     }
@@ -71,6 +77,7 @@ impl CastTo<char> for Value {
             },
             Value::Char(c) => Some(Value::Char(*c)),
             Value::Float(f) => char::from_u32(*f as u32).map(Value::Char),
+            Value::VarName(_) => None,
             Value::Undefined => None,
         }
     }
@@ -110,7 +117,14 @@ impl Value {
                 // If not a float, try as integer
                 match val.parse::<i32>() {
                     Ok(int_val) => Value::Int(int_val),
-                    Err(_) => Value::Undefined,
+                    Err(_) => {
+                        // If it's not a number and not wrapped in quotes, treat as variable name
+                        if val.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            Value::VarName(val)
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                 }
             }
         }
@@ -122,6 +136,7 @@ impl Value {
             Value::Str(_) => Value::Str("str".to_string()),
             Value::Char(_) => Value::Str("char".to_string()),
             Value::Float(_) => Value::Str("float".to_string()),
+            Value::VarName(_) => Value::Str("var".to_string()),
             Value::Undefined => Value::Str("undefined".to_string()),
         }
     }
