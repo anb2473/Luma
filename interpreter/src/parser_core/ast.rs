@@ -1,4 +1,5 @@
 use crate::parser_core::value;
+use crate::parser_core::tokenized;
 
 #[derive(Debug)]
 pub enum AST_type {
@@ -10,16 +11,10 @@ pub enum AST_type {
 }
 
 #[derive(Debug)]
-pub enum AST_object {
-    Statement(Box<AST_statement>),
-    Object(value::Value),
-}
-
-#[derive(Debug)]
 pub struct AST_statement {
     pub statement_type: AST_type,
-    pub a: AST_object,
-    pub b: AST_object,
+    pub a: value::Value,
+    pub b: Vec<tokenized::Token>,
 }
 
 pub struct AST {

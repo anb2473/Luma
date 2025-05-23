@@ -6,11 +6,20 @@ mod parser_core {
     pub mod ast;
 }
 
+pub mod executer {
+    pub mod interpreter;
+    pub mod runtime {
+        pub mod executer;
+    }
+}
+
 fn main() {
     let mut lexer = parser_core::lexer::Lexer::new("C:\\Users\\austi\\projects\\Luma\\test.luma".to_string());
     parser_core::lexer::Lexer::run(&mut lexer);
     
-    
     let parser = parser_core::parser::Parser::new(lexer);
-    parser_core::parser::Parser::run(&parser);
+    let AST = parser_core::parser::Parser::run(&parser);
+
+    let interpreter = executer::interpreter::Interpreter::new(AST);
+    executer::interpreter::Interpreter::run(&interpreter);
 }
