@@ -1,25 +1,23 @@
 mod parser_core {
     pub mod lexer;
-    pub mod value;  // Expose value to lexer so that the lexer can import the value
-    pub mod tokenized;
     pub mod parser;
+    pub mod tokenized;
+    pub mod value;
     pub mod ast;
 }
 
-pub mod executer {
+mod executer {
+    pub mod runtime;
     pub mod interpreter;
-    pub mod runtime {
-        pub mod executer;
-    }
 }
 
 fn main() {
     let mut lexer = parser_core::lexer::Lexer::new("C:\\Users\\austi\\projects\\Luma\\test.luma".to_string());
-    parser_core::lexer::Lexer::run(&mut lexer);
-    
-    let parser = parser_core::parser::Parser::new(lexer);
-    let AST = parser_core::parser::Parser::run(&parser);
+    lexer.run();
 
-    let interpreter = executer::interpreter::Interpreter::new(AST);
-    executer::interpreter::Interpreter::run(&interpreter);
+    let parser = parser_core::parser::Parser::new(lexer);
+    let ast = parser.run();
+
+    let interpreter = executer::interpreter::Interpreter::new(ast);
+    interpreter.run();
 }

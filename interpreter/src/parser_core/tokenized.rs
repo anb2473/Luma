@@ -2,6 +2,7 @@ use crate::parser_core::value;
 
 #[derive(Clone, Debug)]
 pub enum Verb {
+    None,
     Add,
     Sub,
     Mult,
@@ -14,7 +15,7 @@ pub enum Suffix {
     Set,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Token {
     Verb(Verb),
     Noun(value::Value),

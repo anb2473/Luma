@@ -1,7 +1,7 @@
 use crate::parser_core::value;
 use crate::parser_core::tokenized;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AST_type {
     Add,
     Sub,
@@ -10,7 +10,7 @@ pub enum AST_type {
     Set,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AST_statement {
     pub statement_type: AST_type,
     pub a: value::Value,

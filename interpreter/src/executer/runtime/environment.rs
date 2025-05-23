@@ -1,32 +1,22 @@
-use crate::parser_core::value::{Value};
+use std::collections::HashMap;
+use crate::parser_core::value::Value;
 
-struct Environment {
-    vars: HashMap<Value, Value>,
-    parent: Rc<Environment>,
+pub struct Environment {
+    variables: HashMap<String, Value>,
 }
 
 impl Environment {
-    fn new(parent: Option<Rc<Environment>>) -> Self {
-        // Generate a new clean environment
+    pub fn new() -> Self {
         Environment {
-            vars: HashMap::new(),
-            parent: parent,
-            dependencies: HashMap::new(),
+            variables: HashMap::new(),
         }
     }
 
-    fn search_for_var(&self, name: String) -> Value {
-        // First check if the value exists in the current environment
-        if let Some(val) = self.vars.get(&name) {
-            return val.clone();  // Return a clone of the value
-        }
-        
-        // If not found, check parent environments
-        if let Some(parent_env) = &self.parent {
-            return parent_env.search_for_var(name);
-        }
-        
-        // If no value is found in any environment, return Null
-        Value::Undefined
+    pub fn set(&mut self, name: String, value: Value) {
+        self.variables.insert(name, value);
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.variables.get(name)
     }
 }

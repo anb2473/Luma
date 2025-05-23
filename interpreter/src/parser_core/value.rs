@@ -140,4 +140,14 @@ impl Value {
             Value::Undefined => Value::Str("undefined".to_string()),
         }
     }
+
+    pub fn cast_to_type(&self, target: &Value) -> Value {
+        match target {
+            Value::Int(_) => CastTo::<i32>::cast_to(self).unwrap_or(Value::Undefined),
+            Value::Float(_) => CastTo::<f64>::cast_to(self).unwrap_or(Value::Undefined),
+            Value::Str(_) => CastTo::<String>::cast_to(self).unwrap_or(Value::Undefined),
+            Value::Char(_) => CastTo::<char>::cast_to(self).unwrap_or(Value::Undefined),
+            _ => Value::Undefined,
+        }
+    }
 }
