@@ -72,6 +72,13 @@ impl Parser {
                         b: right_hand,
                     });
                 },
+                tokenized::Suffix::Return => {
+                    statements.push(AST_statement {
+                        statement_type: AST_type::Return,
+                        a: value::Value::Undefined,
+                        b: token_list.objects.clone(),
+                    });
+                }
                 _ => {
                     panic!("Unknown suffix");
                 }

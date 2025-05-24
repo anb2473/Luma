@@ -13,6 +13,7 @@ pub enum Verb {
 #[derive(Clone, Debug)]
 pub enum Suffix {
     Set,
+    Return,
 }
 
 #[derive(Clone, Debug)]

@@ -18,6 +18,6 @@ fn main() {
     let parser = parser_core::parser::Parser::new(lexer);
     let ast = parser.run();
 
-    let interpreter = executer::interpreter::Interpreter::new(ast);
-    interpreter.run();
+    let mut interpreter = executer::interpreter::Interpreter::new(ast);
+    println!("{:?}", interpreter.run());
 }

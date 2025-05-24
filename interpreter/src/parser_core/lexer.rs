@@ -70,7 +70,10 @@ impl Lexer {
             let suffix = if let Some(&last_char) = chars.last() {
                 match last_char {
                     ';' => Some(tokenized::Suffix::Set),
-                    _ => None
+                    _ => {
+                        chars.push(last_char);  // Cancel out suffix removal to keep the suffix
+                        Some(tokenized::Suffix::Return)
+                    },
                 }
             } else {
                 None

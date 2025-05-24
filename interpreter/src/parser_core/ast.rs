@@ -3,11 +3,8 @@ use crate::parser_core::tokenized;
 
 #[derive(Clone, Debug)]
 pub enum AST_type {
-    Add,
-    Sub,
-    Mult,
-    Div,
     Set,
+    Return,
 }
 
 #[derive(Clone, Debug)]

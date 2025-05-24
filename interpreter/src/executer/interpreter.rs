@@ -12,7 +12,7 @@ impl Interpreter {
     pub fn new(ast: AST) -> Self {
         Interpreter {
             ast: ast,
-            env: Environment::new(),
+            env: Environment::new(None),
         }
     }
 
@@ -29,13 +29,21 @@ impl Interpreter {
                 Token::Noun(val) => {
                     match a {
                         Value::Undefined => {
-                            a = val.clone();
+                            a = match val.clone() {
+                                Value::VarName(name) => self.env.search_for_var(name.to_string()),
+                                _ => val.clone(),
+                            };
                         }
                         _ => {
+                            let resolved_val = match val {
+                                Value::VarName(name) => self.env.search_for_var(name.clone()),
+                                _ => val.clone(),
+                            };
+                            
                             match opp {
                                 Verb::Add => {
                                     // Cast b to the type of a and perform addition
-                                    let result = val.cast_to_type(&a);
+                                    let result = resolved_val.cast_to_type(&a);
                                     a = match (a, result) {
                                         (Value::Int(a_val), Value::Int(b_val)) => Value::Int(a_val + b_val),
                                         (Value::Float(a_val), Value::Float(b_val)) => Value::Float(a_val + b_val),
@@ -46,7 +54,7 @@ impl Interpreter {
                                 }
                                 Verb::Sub => {
                                     // Cast b to the type of a and perform subtraction
-                                    let result = val.cast_to_type(&a);
+                                    let result = resolved_val.cast_to_type(&a);
                                     a = match (a, result) {
                                         (Value::Int(a_val), Value::Int(b_val)) => Value::Int(a_val - b_val),
                                         (Value::Float(a_val), Value::Float(b_val)) => Value::Float(a_val - b_val),
@@ -57,7 +65,7 @@ impl Interpreter {
                                 }
                                 Verb::Div => {
                                     // Cast b to the type of a and perform division
-                                    let result = val.cast_to_type(&a);
+                                    let result = resolved_val.cast_to_type(&a);
                                     a = match (a, result) {
                                         (Value::Int(a_val), Value::Int(b_val)) => Value::Int(a_val / b_val),
                                         (Value::Float(a_val), Value::Float(b_val)) => Value::Float(a_val / b_val),
@@ -68,7 +76,7 @@ impl Interpreter {
                                 }
                                 Verb::Mult => {
                                     // Cast b to the type of a and perform multiplication
-                                    let result = val.cast_to_type(&a);
+                                    let result = resolved_val.cast_to_type(&a);
                                     a = match (a, result) {
                                         (Value::Int(a_val), Value::Int(b_val)) => Value::Int(a_val * b_val),
                                         (Value::Float(a_val), Value::Float(b_val)) => Value::Float(a_val * b_val),
@@ -78,13 +86,13 @@ impl Interpreter {
                                     };
                                 }
                                 Verb::None => {
-                                    a = val.clone();
+                                    a = resolved_val.clone();
                                 }
                                 Verb::Set => {
                                     // Handle setting variables
                                     if let Value::VarName(name) = &a {
                                         // TODO: Implement variable setting
-                                        a = val.clone();
+                                        a = resolved_val.clone();
                                     } else {
                                         a = Value::Undefined;
                                     }
@@ -104,15 +112,22 @@ impl Interpreter {
         a
     }
 
-    pub fn run(&self) -> Value {
+    pub fn run(&mut self) -> Value {
         for line in &self.ast.statements {
             match line.statement_type {
                 AST_type::Set => {
-                    let var_name = &line.a;
+                    let var_name = match &line.a {
+                        Value::VarName(name) => name,
+                        _ => panic!("Non variable name")
+                    };
                     let expression = &line.b;
 
-                    println!("{:?}", self.evaluate_expression(expression.to_vec()));
+                    self.env.vars.insert(var_name.clone(), self.evaluate_expression(expression.clone()));
                 },
+                AST_type::Return => {
+                    let val = &line.b; 
+                    return self.evaluate_expression(val.clone());
+                }
                 _ => panic!("Unknown opperation"),
             };
         }
