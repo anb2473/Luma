@@ -1,219 +1,55 @@
-let x = 0;
-let total = 0;
-let marker = 100;
+let a = (3 * 3) + 0.0;
+print a + "\n";
 
-while x < 6 {
-    set x = x + 1;
+let b = (3 + 3) + 0.0;
+print b+"\n";
 
-    let base = x;
-    let shadow = x + 10;
+let c = (10 - 3) + 0.0;
+print c + "\n";
 
-    if x == 1 {
-        if x + 2 * 3 == 7 {
-            print 101;
-        } else {
-            print 901;
-        }
+let d = (20 / 4) + 0.0;
+print d+"\n";
 
-        let shadow = 11;
+let e = ((3 * 3) * 2) + 0.0;
+print e+"\n";
 
-        if shadow == 11 {
-            print 102;
-        } else {
-            print 902;
-        }
+let f = ((10 + 5) * 2) + 0.0;
+print f+"\n";
 
-        if x * 2 + 3 == 5 {
-            print 103;
-        } else {
-            print 903;
-        }
+let g = ((20 / 2) - 3) + 0.0;
+print g+"\n";
 
-        set total = total + 10;
+let h = ((3 * 3) + (2 * 4)) + 0.0;
+print h+"\n";
 
-    } else if x == 2 {
-        if x * 2 + 3 * 4 == 10 {
-            print 201;
-        } else {
-            print 904;
-        }
+let i = ((10 - 2) * (3 + 1)) + 0.0;
+print i+"\n";
 
-        let shadow = 22;
+let j = (((2 + 3) * 4) - (10 / 2)) + 0.0;
+print j+"\n";
 
-        if shadow > 20 {
-            let shadow = 23;
+let x = 3;
+let k = (x * 3) + 0.0;
+print k+"\n";
 
-            if shadow - 3 == 20 {
-                print 202;
-            } else {
-                print 905;
-            }
-        } else {
-            print 906;
-        }
+let y = 4;
+let l = ((y * 2) + 3) + 0.0;
+print l+"\n";
 
-        set total = total + shadow;
+let m = ((x * y) + (3 * 2)) + 0.0;
+print m+"\n";
 
-        continue;
+let n = ((x + 1) * (y - 2)) + 0.0;
+print n+"\n";
 
-    } else if x == 3 {
-        if x + 2 * 3 - 4 == 5 {
-            print 301;
-        } else {
-            print 907;
-        }
+let p = ((3 * 3) + 0.0);
+print p+"\n";
 
-        if x * 2 + 3 * 4 == 18 {
-            print 302;
-        } else {
-            print 908;
-        }
+let q = (((3 * 3) + 0.0) * 2.0);
+print q+"\n";
 
-        if x > 2 {
-            if x >= 3 {
-                if x <= 3 {
-                    if x != 4 {
-                        print 303;
-                    } else {
-                        print 909;
-                    }
-                } else {
-                    print 910;
-                }
-            } else {
-                print 911;
-            }
-        } else {
-            print 912;
-        }
+let r = ((3 * 3) + (4 * 4)) + 0.0;
+print r+"\n";
 
-        let shadow = 33;
-
-        if shadow == 33 {
-            set total = total + 3;
-        } else {
-            set total = total - 3;
-        }
-
-    } else if x == 4 {
-        let shadow = 44;
-
-        if x + 2 * 3 > 9 {
-            print 401;
-        } else {
-            print 913;
-        }
-
-        if x * 2 + 3 > 10 {
-            print 402;
-        } else {
-            print 914;
-        }
-
-        if x + 2 * 3 >= 10 {
-            print 403;
-        } else {
-            print 915;
-        }
-
-        if x * 2 + 3 <= 11 {
-            print 404;
-        } else {
-            print 916;
-        }
-
-        if x + 2 * 3 != 10 {
-            print 405;
-        } else {
-            print 917;
-        }
-
-        set total = total + shadow;
-
-    } else if x == 5 {
-        let shadow = 55;
-
-        if x * 2 + 3 * 4 - 5 == 17 {
-            print 501;
-        } else {
-            print 918;
-        }
-
-        if x + 2 * 3 * 4 == 29 {
-            print 502;
-        } else {
-            print 919;
-        }
-
-        if x * 2 + 3 * 4 - 5 * 2 == 17 {
-            print 503;
-        } else {
-            print 920;
-        }
-
-        if x + 2 * 3 - 4 * 5 + 6 == 1 {
-            print 504;
-        } else {
-            print 921;
-        }
-
-        set total = total + shadow;
-
-        continue;
-
-    } else {
-        let shadow = 66;
-
-        if x * 2 + 3 * 4 - 5 * 6 + 7 == 1 {
-            print 601;
-        } else {
-            print 922;
-        }
-
-        if shadow == 66 {
-            print 602;
-        } else {
-            print 923;
-        }
-
-        set marker = marker + 1;
-
-        break;
-    }
-
-    let p = x + 2 * 3;
-    let q = x * 2 + 3;
-    let r = x + 2 * 3 * 4;
-    let s = x * 2 + 3 * 4 - 5;
-    let t = x + 2 * 3 - 4 * 5 + 6;
-
-    if p == x + 6 {
-        if q == x * 2 + 3 {
-            if r == x + 24 {
-                if s == x * 2 + 7 {
-                    print 701;
-                } else {
-                    print 924;
-                }
-            } else {
-                print 925;
-            }
-        } else {
-            print 926;
-        }
-    } else {
-        print 927;
-    }
-
-    if t == x - 14 {
-        print 702;
-    } else {
-        print 928;
-    }
-
-    set total = total + x;
-}
-
-print x;
-print total;
-print marker;
+let s = ((3 * (2 + 1)) * (4 - 2)) + 0.0;
+print s+"\n";

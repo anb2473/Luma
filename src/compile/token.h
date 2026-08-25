@@ -32,7 +32,11 @@ enum class TokenType {
     While,
     Break,
     Continue,
-    Set
+    Set,
+    Sleep,
+    Mod,
+    OpenParen,
+    CloseParen
 };
 
 struct Token {

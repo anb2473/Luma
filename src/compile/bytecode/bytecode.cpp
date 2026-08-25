@@ -6,6 +6,8 @@
 #include "bytecode.h"
 #include "codes.h"
 #include <iostream>
+#include <ranges>
+
 #include "compile/overloaded_visitor/overloaded_visitor.h"
 
 ValueType Compiler::cast_int_to(ValueType superior_type, const IntLiteral& int_literal) {
@@ -194,10 +196,86 @@ ValueType Compiler::cast(ValueType superior_type, const ASTNode& node) {
     );
 }
 
+ValueType Compiler::cast_binary_expression_to(const BinaryExpression& binary_expression, const ValueType cast_type) {
+    switch (binary_expression.cast_type) {
+        case ValueType::Int:
+            switch (cast_type) {
+                case ValueType::Int:
+                    return ValueType::Int;
+                    break;
+                case ValueType::Float:
+                    writer.write_u8(static_cast<uint8_t>(Opcode::IntToFloat));
+                    return ValueType::Float;
+                    break;
+                case ValueType::StrPtr:
+                    writer.write_u8(static_cast<uint8_t>(Opcode::IntToStrPtr));
+                    return ValueType::StrPtr;
+                    break;
+                default:
+                    throw BytecodeError("Invalid cast");
+            }
+        case ValueType::Float:
+            switch (cast_type) {
+                case ValueType::Int:
+                case ValueType::Float:
+                    return ValueType::Float;
+                    break;
+                case ValueType::StrPtr:
+                    writer.write_u8(static_cast<uint8_t>(Opcode::FloatToStrPtr));
+                    return ValueType::StrPtr;
+                    break;
+                default:
+                    throw BytecodeError("Invalid cast");
+            }
+        case ValueType::StrPtr:
+            switch (cast_type) {
+                case ValueType::Int:
+                case ValueType::Float:
+                case ValueType::StrPtr:
+                    return ValueType::StrPtr;
+                    break;
+                default:
+                    throw BytecodeError("Invalid cast");
+            }
+        case ValueType::Bool:
+            switch (cast_type) {
+                case ValueType::Bool:
+                    return ValueType::Bool;
+                    break;
+                default:
+                    throw BytecodeError("Invalid cast");
+            }
+    }
+    throw BytecodeError("Invalid type cast");
+}
+
 ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
     return std::visit(
         Overloaded(
-            [this](const BinaryExpression& binary_expression) {
+        [this](const UnaryExpression& unary_expression) {
+                    compile_root(*unary_expression.right, unary_expression.cast_type);
+                    switch (unary_expression.operation) {
+                        case TokenType::Sub: {
+                            Opcode opcode;
+                            switch (unary_expression.cast_type) {
+                                case ValueType::Int:
+                                    opcode = Opcode::SubUnaryInt;
+                                    break;
+                                case ValueType::Float:
+                                    opcode = Opcode::SubUnaryFloat;
+                                    break;
+                                default:
+                                    throw BytecodeError("Invalid type");
+                            }
+
+                            writer.write_u8(static_cast<uint8_t>(opcode));
+                            return ValueType::Bool;
+                        }
+                        default:
+                            throw BytecodeError("Invalid type");
+                    }
+                },
+            [this, cast_type](const BinaryExpression& binary_expression) {
                 compile_root(*binary_expression.left, binary_expression.cast_type);
                 compile_root(*binary_expression.right, binary_expression.cast_type);
 
@@ -219,6 +297,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::IsNotEq: {
@@ -238,6 +317,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::IsGreater: {
@@ -254,6 +334,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::IsLess: {
@@ -270,6 +351,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::IsLessOrEq: {
@@ -286,6 +368,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::IsGreaterOrEq: {
@@ -302,6 +385,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
+                        cast_binary_expression_to(binary_expression, cast_type);
                         return ValueType::Bool;
                     }
                     case TokenType::Add: {
@@ -321,7 +405,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
-                        return binary_expression.cast_type;
+                        return cast_binary_expression_to(binary_expression, cast_type);
                     }
                     case TokenType::Div: {
                         Opcode opcode;
@@ -337,7 +421,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
-                        return binary_expression.cast_type;
+                        return cast_binary_expression_to(binary_expression, cast_type);
                     }
                     case TokenType::Mult: {
                         Opcode opcode;
@@ -353,7 +437,7 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
-                        return binary_expression.cast_type;
+                        return cast_binary_expression_to(binary_expression, cast_type);
                     }
                     case TokenType::Sub: {
                         Opcode opcode;
@@ -369,11 +453,12 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
                         }
 
                         writer.write_u8(static_cast<uint8_t>(opcode));
-                        return binary_expression.cast_type;
+                        return cast_binary_expression_to(binary_expression, cast_type);
                     }
                     default:
                         throw BytecodeError("Invalid operation");
                 }
+
             },
             [this, &cast_type, &root](auto&) {
                 return cast(cast_type, root);
@@ -383,7 +468,26 @@ ValueType Compiler::compile_root(const ASTNode& root, ValueType cast_type) {
     );
 }
 
+void Compiler::clean_scope(const size_t start_scope) {
+    if (start_scope > scopes.size()) {
+        throw BytecodeError("Invalid start scope for cleanup");
+    }
+    for (size_t scope = scopes.size(); scope-- > start_scope;) {
+        for (const auto &symbol: scopes.at(scope) | std::views::values) {
+            switch (symbol.type) {
+                case ValueType::StrPtr:
+                    writer.write_u8(static_cast<uint8_t>(Opcode::DelStrPtr));
+                    break;
+                default:
+                    writer.write_u8(static_cast<uint8_t>(Opcode::PopStack));
+            }
+        }
+    }
+}
+
 void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& program) {
+    scopes.emplace_back();
+
     for (const std::unique_ptr<ASTNode>& node : program.nodes) {
         std::visit(
             Overloaded(
@@ -392,6 +496,10 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
                         *set_declaration.value,
                         set_declaration.cast_type
                     );
+
+                    if (type == ValueType::StrPtr) {
+                        throw BytecodeError("Cannot reassign string pointer");
+                    }
 
                     const Identifier& identifier =
                         std::get<Identifier>(
@@ -402,7 +510,12 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
                     bool found = false;
 
                     for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
-                        if (scope->contains(identifier.name)) {
+                        if (auto existing = scope->find(identifier.name); existing != scope->end()) {
+                            if (
+                                existing->second.type != type
+                                ) {
+                                throw BytecodeError("Cannot reassign type");
+                            }
                             offset = scope->at(identifier.name).offset;
                             found = true;
                             break;
@@ -451,13 +564,21 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
 
                     uint16_t offset = 0;
 
+                    if (scopes.back().contains(identifier.name)) {
+                        throw BytecodeError("Identifier already assigned");
+                    }
+
                     for (auto it = scopes.begin(); it != scopes.end(); ++it) {
                         offset += it->size();
                     }
 
                     scopes.back().insert({
                         identifier.name,
-                        Symbol{offset, 1}
+                        Symbol{
+                            offset,
+                            1,
+                            identifier.type
+                        }
                     });
 
                     Opcode opcode;
@@ -534,11 +655,34 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
                     }
 
                     writer.write_u8(static_cast<uint8_t>(opcode));
+        },
+        [this](SleepStatement& sleep_statement) {
+                    ValueType type = compile_root(
+                        *sleep_statement.value,
+                        sleep_statement.cast_type
+                    );
+
+                    Opcode opcode;
+
+                    switch (type) {
+                        case ValueType::Int:
+                            opcode = Opcode::SleepInt;
+                            break;
+                        case ValueType::Float:
+                            opcode = Opcode::SleepFloat;
+                            break;
+                        default:
+                            throw BytecodeError("Invalid type");
+                    }
+
+                    writer.write_u8(static_cast<uint8_t>(opcode));
                 },
                 [this, &loop_context](WhileDeclaration& while_declaration) {
                     size_t conditional_start_pos = writer.code_size();
                     loop_context.push_back({
                         conditional_start_pos,
+                        scopes.size(),
+                        {}
                     });
 
                     ValueType type = compile_root(
@@ -570,6 +714,8 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
                     if (loop_context.empty()) {
                         throw BytecodeError("break used outside of loop");
                     }
+                    clean_scope(loop_context.back().loop_scope);
+                    scopes.emplace_back();
                     writer.write_u8(static_cast<uint8_t>(Opcode::JmpBack));
                     writer.write_u16(writer.code_size() + sizeof(uint16_t) - loop_context.back().condition_offset);
                 },
@@ -577,6 +723,7 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
                     if (loop_context.empty()) {
                         throw BytecodeError("break used outside of loop");
                     }
+                    clean_scope(loop_context.back().loop_scope);
                     writer.write_u8(static_cast<uint8_t>(Opcode::Jmp));
                     size_t patch_pos = writer.code_size();
                     writer.write_u16(0);
@@ -589,16 +736,15 @@ void Compiler::compile_program(std::vector<LoopContext>& loop_context, Program& 
             node->data
         );
     }
+
+    clean_scope(scopes.size() - 1);
+    scopes.pop_back();
 }
 
 BytecodeWriter Compiler::to_bytecode() {
     std::vector<LoopContext> loop_context;
     compile_program(loop_context, program);
 
-    if (!scopes.back().empty()) {
-        writer.write_u8(static_cast<uint8_t>(Opcode::PopStack));
-        writer.write_u16(static_cast<uint16_t>(scopes.back().size()));
-    }
     writer.finalize_header();
     return writer;
 }

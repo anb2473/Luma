@@ -49,5 +49,10 @@ enum class Opcode : uint8_t {
     IsNotEqBool,
     Jmp,
     JmpBack,
-    PopStack
+    PopStack,
+    DelStrPtr,
+    SleepInt,
+    SleepFloat,
+    SubUnaryInt,
+    SubUnaryFloat,
 };

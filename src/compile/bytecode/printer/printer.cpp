@@ -26,6 +26,7 @@ uint16_t read_u16(
     }
 
     uint16_t value;
+
     std::memcpy(
         &value,
         buffer.data() + offset,
@@ -47,6 +48,29 @@ uint32_t read_u32(
     }
 
     uint32_t value;
+
+    std::memcpy(
+        &value,
+        buffer.data() + offset,
+        sizeof(value)
+    );
+
+    return value;
+}
+
+int32_t read_i32(
+    const std::vector<uint8_t>& buffer,
+    size_t offset
+) {
+    if (offset > buffer.size() ||
+        sizeof(int32_t) > buffer.size() - offset) {
+        throw std::runtime_error(
+            "Bytecode printer attempted to read int32_t past buffer"
+        );
+    }
+
+    int32_t value;
+
     std::memcpy(
         &value,
         buffer.data() + offset,
@@ -68,6 +92,7 @@ double read_f64(
     }
 
     double value;
+
     std::memcpy(
         &value,
         buffer.data() + offset,
@@ -78,7 +103,82 @@ double read_f64(
 }
 
 bool is_known_opcode(uint8_t value) {
-    return value <= static_cast<uint8_t>(Opcode::PopStack);
+    switch (static_cast<Opcode>(value)) {
+        case Opcode::PushInt:
+        case Opcode::PushFloat:
+        case Opcode::PushConst:
+        case Opcode::PushBool:
+
+        case Opcode::AddInt:
+        case Opcode::SubInt:
+        case Opcode::MultInt:
+        case Opcode::DivInt:
+
+        case Opcode::AddFloat:
+        case Opcode::SubFloat:
+        case Opcode::MultFloat:
+        case Opcode::DivFloat:
+
+        case Opcode::SubUnaryInt:
+        case Opcode::SubUnaryFloat:
+
+        case Opcode::AddStrPtr:
+
+        case Opcode::StoreInt:
+        case Opcode::StoreFloat:
+        case Opcode::StoreConst:
+        case Opcode::StoreStrPtr:
+        case Opcode::StoreBool:
+
+        case Opcode::LoadInt:
+        case Opcode::LoadFloat:
+        case Opcode::LoadStrPtr:
+        case Opcode::LoadBool:
+
+        case Opcode::PrintInt:
+        case Opcode::PrintFloat:
+        case Opcode::PrintStrPtr:
+        case Opcode::PrintBool:
+
+        case Opcode::FloatToStrPtr:
+        case Opcode::IntToFloat:
+        case Opcode::IntToStrPtr:
+
+        case Opcode::IsEqInt:
+        case Opcode::IsEqFloat:
+        case Opcode::IsEqBool:
+
+        case Opcode::IsNotEqInt:
+        case Opcode::IsNotEqFloat:
+        case Opcode::IsNotEqBool:
+
+        case Opcode::IsGreaterFloat:
+        case Opcode::IsGreaterInt:
+
+        case Opcode::IsGreaterOrEqFloat:
+        case Opcode::IsGreaterOrEqInt:
+
+        case Opcode::IsLessOrEqFloat:
+        case Opcode::IsLessOrEqInt:
+
+        case Opcode::IsLessFloat:
+        case Opcode::IsLessInt:
+
+        case Opcode::JmpIfFalse:
+        case Opcode::Jmp:
+        case Opcode::JmpBack:
+
+        case Opcode::PopStack:
+        case Opcode::DelStrPtr:
+
+        case Opcode::SleepInt:
+        case Opcode::SleepFloat:
+
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 } // namespace
@@ -94,6 +194,9 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
 
         case Opcode::PushConst:
             return "PUSH_CONST";
+
+        case Opcode::PushBool:
+            return "PUSH_BOOL";
 
         case Opcode::AddInt:
             return "ADD_INT";
@@ -119,6 +222,15 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
         case Opcode::DivFloat:
             return "DIV_FLOAT";
 
+        case Opcode::SubUnaryInt:
+            return "SUB_UNARY_INT";
+
+        case Opcode::SubUnaryFloat:
+            return "SUB_UNARY_FLOAT";
+
+        case Opcode::AddStrPtr:
+            return "ADD_STR_PTR";
+
         case Opcode::StoreInt:
             return "STORE_INT";
 
@@ -128,29 +240,35 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
         case Opcode::StoreConst:
             return "STORE_CONST";
 
-        case Opcode::AddStrPtr:
-            return "ADD_STR_PTR";
-
         case Opcode::StoreStrPtr:
             return "STORE_STR_PTR";
 
-        case Opcode::PrintInt:
-            return "PRINT_INT";
-
-        case Opcode::PrintStrPtr:
-            return "PRINT_STR_PTR";
-
-        case Opcode::PrintFloat:
-            return "PRINT_FLOAT";
-
-        case Opcode::LoadFloat:
-            return "LOAD_FLOAT";
+        case Opcode::StoreBool:
+            return "STORE_BOOL";
 
         case Opcode::LoadInt:
             return "LOAD_INT";
 
+        case Opcode::LoadFloat:
+            return "LOAD_FLOAT";
+
         case Opcode::LoadStrPtr:
             return "LOAD_STR_PTR";
+
+        case Opcode::LoadBool:
+            return "LOAD_BOOL";
+
+        case Opcode::PrintInt:
+            return "PRINT_INT";
+
+        case Opcode::PrintFloat:
+            return "PRINT_FLOAT";
+
+        case Opcode::PrintStrPtr:
+            return "PRINT_STR_PTR";
+
+        case Opcode::PrintBool:
+            return "PRINT_BOOL";
 
         case Opcode::FloatToStrPtr:
             return "FLOAT_TO_STR_PTR";
@@ -161,18 +279,6 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
         case Opcode::IntToStrPtr:
             return "INT_TO_STR_PTR";
 
-        case Opcode::PushBool:
-            return "PUSH_BOOL";
-
-        case Opcode::StoreBool:
-            return "STORE_BOOL";
-
-        case Opcode::PrintBool:
-            return "PRINT_BOOL";
-
-        case Opcode::LoadBool:
-            return "LOAD_BOOL";
-
         case Opcode::IsEqInt:
             return "IS_EQ_INT";
 
@@ -181,6 +287,15 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
 
         case Opcode::IsEqBool:
             return "IS_EQ_BOOL";
+
+        case Opcode::IsNotEqInt:
+            return "IS_NOT_EQ_INT";
+
+        case Opcode::IsNotEqFloat:
+            return "IS_NOT_EQ_FLOAT";
+
+        case Opcode::IsNotEqBool:
+            return "IS_NOT_EQ_BOOL";
 
         case Opcode::IsGreaterFloat:
             return "IS_GREATER_FLOAT";
@@ -209,15 +324,6 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
         case Opcode::JmpIfFalse:
             return "JMP_IF_FALSE";
 
-        case Opcode::IsNotEqInt:
-            return "IS_NOT_EQ_INT";
-
-        case Opcode::IsNotEqFloat:
-            return "IS_NOT_EQ_FLOAT";
-
-        case Opcode::IsNotEqBool:
-            return "IS_NOT_EQ_BOOL";
-
         case Opcode::Jmp:
             return "JMP";
 
@@ -226,6 +332,15 @@ const char* BytecodePrinter::opcode_name(Opcode opcode) const {
 
         case Opcode::PopStack:
             return "POP_STACK";
+
+        case Opcode::DelStrPtr:
+            return "DEL_STR_PTR";
+
+        case Opcode::SleepInt:
+            return "SLEEP_INT";
+
+        case Opcode::SleepFloat:
+            return "SLEEP_FLOAT";
 
         default:
             return "UNKNOWN";
@@ -345,7 +460,9 @@ void BytecodePrinter::print_constant(
     size_t& i
 ) const {
     const size_t length_offset = i;
-    const uint16_t length = read_u16(front, i);
+
+    const uint16_t length =
+        read_u16(front, i);
 
     print_row(
         length_offset,
@@ -358,7 +475,8 @@ void BytecodePrinter::print_constant(
 
     i += sizeof(uint16_t);
 
-    if (static_cast<size_t>(length) > front.size() - i) {
+    if (static_cast<size_t>(length) >
+        front.size() - i) {
         throw std::runtime_error(
             "Truncated string constant: missing value"
         );
@@ -397,7 +515,8 @@ void BytecodePrinter::print_constants(
         );
     }
 
-    const uint32_t code_offset = read_u32(front, 0);
+    const uint32_t code_offset =
+        read_u32(front, 0);
 
     if (code_offset != front.size()) {
         throw std::runtime_error(
@@ -447,7 +566,9 @@ void BytecodePrinter::print_instruction(
                 static_cast<unsigned int>(raw_opcode)
             ) +
             " at code offset " +
-            std::to_string(code_offset + opcode_offset)
+            std::to_string(
+                code_offset + opcode_offset
+            )
         );
     }
 
@@ -466,28 +587,30 @@ void BytecodePrinter::print_instruction(
     ++i;
 
     // ------------------------------------------------------------
-    // uint32 operands
+    // uint32 / int32 operands
     // ------------------------------------------------------------
 
     switch (opcode) {
         case Opcode::PushInt: {
-            const uint32_t value = read_u32(code, i);
+            const int32_t value =
+                read_i32(code, i);
 
             print_row(
                 code_offset + i,
                 code,
                 i,
-                sizeof(uint32_t),
+                sizeof(int32_t),
                 "OPERAND",
                 std::to_string(value)
             );
 
-            i += sizeof(uint32_t);
+            i += sizeof(int32_t);
             return;
         }
 
         case Opcode::PushConst: {
-            const uint32_t offset = read_u32(code, i);
+            const uint32_t offset =
+                read_u32(code, i);
 
             print_row(
                 code_offset + i,
@@ -511,7 +634,8 @@ void BytecodePrinter::print_instruction(
     // ------------------------------------------------------------
 
     if (opcode == Opcode::PushFloat) {
-        const double value = read_f64(code, i);
+        const double value =
+            read_f64(code, i);
 
         print_row(
             code_offset + i,
@@ -569,11 +693,12 @@ void BytecodePrinter::print_instruction(
         case Opcode::StoreStrPtr:
         case Opcode::StoreBool:
 
-        case Opcode::LoadFloat:
         case Opcode::LoadInt:
+        case Opcode::LoadFloat:
         case Opcode::LoadStrPtr:
         case Opcode::LoadBool: {
-            const uint16_t offset = read_u16(code, i);
+            const uint16_t offset =
+                read_u16(code, i);
 
             print_row(
                 code_offset + i,
@@ -600,7 +725,8 @@ void BytecodePrinter::print_instruction(
         case Opcode::JmpIfFalse:
         case Opcode::Jmp:
         case Opcode::JmpBack: {
-            const uint16_t offset = read_u16(code, i);
+            const uint16_t offset =
+                read_u16(code, i);
 
             print_row(
                 code_offset + i,
@@ -620,26 +746,6 @@ void BytecodePrinter::print_instruction(
     }
 
     // ------------------------------------------------------------
-    // POP_STACK: uint16 count
-    // ------------------------------------------------------------
-
-    if (opcode == Opcode::PopStack) {
-        const uint16_t count = read_u16(code, i);
-
-        print_row(
-            code_offset + i,
-            code,
-            i,
-            sizeof(uint16_t),
-            "COUNT",
-            std::to_string(count)
-        );
-
-        i += sizeof(uint16_t);
-        return;
-    }
-
-    // ------------------------------------------------------------
     // No-operand instructions
     // ------------------------------------------------------------
 
@@ -654,11 +760,14 @@ void BytecodePrinter::print_instruction(
         case Opcode::MultFloat:
         case Opcode::DivFloat:
 
+        case Opcode::SubUnaryInt:
+        case Opcode::SubUnaryFloat:
+
         case Opcode::AddStrPtr:
 
         case Opcode::PrintInt:
-        case Opcode::PrintStrPtr:
         case Opcode::PrintFloat:
+        case Opcode::PrintStrPtr:
         case Opcode::PrintBool:
 
         case Opcode::FloatToStrPtr:
@@ -668,6 +777,10 @@ void BytecodePrinter::print_instruction(
         case Opcode::IsEqInt:
         case Opcode::IsEqFloat:
         case Opcode::IsEqBool:
+
+        case Opcode::IsNotEqInt:
+        case Opcode::IsNotEqFloat:
+        case Opcode::IsNotEqBool:
 
         case Opcode::IsGreaterFloat:
         case Opcode::IsGreaterInt:
@@ -681,9 +794,12 @@ void BytecodePrinter::print_instruction(
         case Opcode::IsLessFloat:
         case Opcode::IsLessInt:
 
-        case Opcode::IsNotEqInt:
-        case Opcode::IsNotEqFloat:
-        case Opcode::IsNotEqBool:
+        case Opcode::SleepInt:
+        case Opcode::SleepFloat:
+
+        case Opcode::PopStack:
+        case Opcode::DelStrPtr:
+
             return;
 
         default:
@@ -711,7 +827,8 @@ void BytecodePrinter::print_code(
         );
     }
 
-    const uint32_t code_offset = read_u32(front, 0);
+    const uint32_t code_offset =
+        read_u32(front, 0);
 
     if (code_offset != front.size()) {
         throw std::runtime_error(

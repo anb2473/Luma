@@ -79,29 +79,47 @@ int Parser::get_precedence(const TokenType token_type) {
     switch (token_type) {
         case TokenType::Mult:
         case TokenType::Div:
-            return Precedence::Multiplicative;
+            return Multiplicative;
 
         case TokenType::Add:
         case TokenType::Sub:
-            return Precedence::Additive;
+            return Additive;
 
         case TokenType::IsLess:
         case TokenType::IsLessOrEq:
         case TokenType::IsGreater:
         case TokenType::IsGreaterOrEq:
-            return Precedence::Conditional;
+            return Conditional;
 
         case TokenType::IsEq:
         case TokenType::IsNotEq:
-            return Precedence::Equality;
+            return Equality;
 
         default:
             return Invalid;
     }
 }
 
+ASTNode Parser::parse_unary_expression() {
+    TokenType operation = tokens.peep_token().type;
+    if (operation == TokenType::Sub) {
+        tokens.consume();
+
+        ASTNode operand = parse_unary_expression();
+
+        return {
+            UnaryExpression{
+                operation,
+                std::make_unique<ASTNode>(std::move(operand))
+            }
+        };
+    }
+
+    return parse_value();
+}
+
 ASTNode Parser::parse_expression(Precedence min_precedence) {
-    ASTNode left = parse_value();
+    ASTNode left = parse_unary_expression();
     while (true) {
         TokenType operation = tokens.peep_token().type;
 
@@ -142,6 +160,12 @@ ASTNode Parser::parse_value() {
         case TokenType::False:
         case TokenType::True:
             return parse_bool();
+        case TokenType::OpenParen: {
+            tokens.consume();
+            ASTNode expression = parse_expression();
+            tokens.expect(TokenType::CloseParen);
+            return expression;
+        }
         default:
             throw ParserError("Invalid token for value");
     }
@@ -214,6 +238,20 @@ std::unique_ptr<ASTNode> Parser::parse_continue() {
     );
 }
 
+std::unique_ptr<ASTNode> Parser::parse_sleep() {
+    ASTNode value = parse_expression();
+    tokens.expect(TokenType::Semicolon);
+
+    return std::make_unique<ASTNode>(
+        ASTNode {
+            SleepStatement{
+                std::make_unique<ASTNode>(std::move(value))
+            }
+        }
+    );
+}
+
+
 Program Parser::parse_scope() {
     Program program;
     while (!tokens.at_end()) {
@@ -243,6 +281,9 @@ Program Parser::parse_scope() {
                 break;
             case TokenType::Continue:
                 program.nodes.push_back(parse_continue());
+                break;
+            case TokenType::Sleep:
+                program.nodes.push_back(parse_sleep());
                 break;
             default:
                 throw ParserError("Invalid token");

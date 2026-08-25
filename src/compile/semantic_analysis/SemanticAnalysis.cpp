@@ -95,6 +95,13 @@ ValueType SemanticAnalysis::analyze_expression(ASTNode& node, Scopes& scopes) {
                     ValueType::Bool : expression.cast_type;
                 return expression.return_type;
             },
+            [&scopes, this](UnaryExpression& expression)  {
+                ValueType right = analyze_expression(*expression.right, scopes);
+                expression.cast_type = right;
+                expression.return_type = is_condition(expression.operation) ?
+                    ValueType::Bool : expression.cast_type;
+                return expression.return_type;
+            },
         [](const auto&) -> ValueType {
                 throw SemanticAnalysisError("Unexpected type");
             }
@@ -171,6 +178,9 @@ void SemanticAnalysis::analyze_program(Program& target, Scopes& scopes) {
                 [this, &scopes](PrintStatement& print_statement)  {
                     ValueType type = analyze_expression(*print_statement.value, scopes);
                     print_statement.cast_type = type;
+                }, [this, &scopes](SleepStatement& sleep_statement)  {
+                    ValueType type = analyze_expression(*sleep_statement.value, scopes);
+                    sleep_statement.cast_type = type;
                 },
                 [](BreakStatement&) {},
                 [](ContinueStatement&)  {},

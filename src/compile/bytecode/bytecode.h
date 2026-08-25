@@ -41,10 +41,9 @@ private:
         buffer.insert(buffer.end(), bytes, bytes + sizeof(value));
     }
 
-    static void append_string(
-        std::vector<uint8_t>& buffer,
-        const std::string& value
-    ) {
+    static std::vector<uint8_t> decode_string(const std::string& value) {
+        std::vector<uint8_t> buffer;
+
         for (size_t i = 0; i < value.size(); ++i) {
             char c = value[i];
 
@@ -91,13 +90,55 @@ private:
                 case '0':
                     buffer.push_back('\0');
                     break;
-
+                case 'e':
+                    buffer.push_back('\x1B');
+                    break;
+                case 'a':
+                    buffer.push_back('\a');
+                    break;
+                case 'b':
+                    buffer.push_back('\b');
+                    break;
+                case 'f':
+                    buffer.push_back('\f');
+                    break;
+                case 'v':
+                    buffer.push_back('\v');
+                    break;
+                case '?':
+                    buffer.push_back('\?');
+                    break;
+                case 'x': {
+                    if (i + 2 >= value.size()) {
+                        throw BytecodeError("Invalid escape sequence");
+                    }
+                    char high = value[++i];
+                    char low = value[++i];
+                    auto hex_value = [](char c) -> uint8_t {
+                        if (c >= '0' && c <= '9') {
+                            return c - '0';
+                        }
+                        if (c >= 'a' && c <= 'f') {
+                            return c - 'a' + 10;
+                        }
+                        if (c >= 'A' && c <= 'F') {
+                            return c - 'A' + 10;
+                        }
+                        throw BytecodeError("Invalid escape sequence");
+                    };
+                    const auto byte = static_cast<uint8_t>(
+                        (hex_value(high) << 4) | hex_value(low)
+                    );
+                    buffer.push_back(byte);
+                    break;
+                }
                 default:
                     throw BytecodeError(
                         "Invalid escape sequence"
                     );
             }
         }
+        return buffer;
     }
 
     void append_code(std::vector<uint8_t>& buffer, const std::vector<uint8_t>& code_data) {
@@ -144,7 +185,8 @@ public:
     }
 
     void write_string(const std::string& value) {
-        append_string(code, value);
+        auto decoded = decode_string(value);
+        code.insert(code.end(), decoded.begin(), decoded.end());
     }
 
     void write_front_u8(uint8_t value) {
@@ -166,17 +208,9 @@ public:
     void write_front_string(
         const std::string& value
     ) {
-        size_t size = 0;
+        auto decoded = decode_string(value);
 
-        for (size_t i = 0; i < value.size(); ++i) {
-            if (value[i] == '\\') {
-                ++i;
-            }
-
-            ++size;
-        }
-
-        if (size > UINT16_MAX) {
+        if (decoded.size() > UINT16_MAX) {
             throw BytecodeError(
                 "String literal exceeds maximum size"
             );
@@ -184,12 +218,13 @@ public:
 
         append_u16(
             front,
-            static_cast<uint16_t>(size)
+            static_cast<uint16_t>(decoded.size())
         );
 
-        append_string(
-            front,
-            value
+        front.insert(
+            front.end(),
+            decoded.begin(),
+            decoded.end()
         );
     }
 
@@ -241,6 +276,7 @@ public:
 struct Symbol {
     uint16_t offset;
     uint16_t size;
+    ValueType type;
 };
 
 using SymbolTable = std::unordered_map<std::string, Symbol>;
@@ -265,6 +301,7 @@ struct BreakPatch {
 
 struct LoopContext {
     size_t condition_offset;
+    size_t loop_scope;
     std::vector<BreakPatch> break_patches;
 };
 
@@ -276,6 +313,8 @@ class Compiler {
         std::vector<SymbolTable> scopes;
         ValueType compile_root(const ASTNode &root, ValueType cast_type);
 
+        void clean_scope(size_t start_scope);
+
         void compile_program(std::vector<LoopContext> &loop_context, Program &program);
 
         std::unordered_map<Value, Constant> constants;
@@ -284,6 +323,9 @@ class Compiler {
         ValueType cast_int_to(ValueType superior_type, const IntLiteral& int_literal);
         ValueType cast_identifier_to(ValueType superior_type, const Identifier& identifier, ValueType identifier_type);
         ValueType cast(ValueType superior_type, const ASTNode& node);
+
+        ValueType cast_binary_expression_to(const BinaryExpression &binary_expression, ValueType cast_type);
+
         ValueType cast_bool_to(ValueType superior_type, const BoolLiteral& bool_literal);
     public:
         Compiler(
@@ -295,8 +337,6 @@ class Compiler {
             headerless(headerless),
             writer(headerless),
             scopes(parent_scopes)
-        {
-            scopes.push_back({});
-        }
+        {}
         BytecodeWriter to_bytecode();
 };

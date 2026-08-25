@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 #include <cstdint>
+#include <thread>
 
 Header Interpreter::read_header() {
     if (source.size() < 4) {
@@ -119,14 +120,6 @@ uint64_t Stack::stack_at(size_t offset) const {
     return stack_end[-1 - offset];
 }
 
-void Stack::pop_n(uint16_t count) {
-    if (count > size()) {
-        throw std::runtime_error("Stack underflow");
-    }
-
-    stack_pointer += count;
-}
-
 uint8_t Interpreter::read_byte() {
     if (pos > source.size() - sizeof(uint8_t)) {
         throw InterpreterError("Truncated byte");
@@ -136,11 +129,11 @@ uint8_t Interpreter::read_byte() {
 }
 
 uint32_t Interpreter::read_u32() {
-    if (pos > source.size() - sizeof(uint32_t)) {
+    if (pos > source.size() - sizeof(int32_t)) {
         throw InterpreterError("Truncated u32");
     }
 
-    uint32_t val;
+    int32_t val;
 
     std::memcpy(
         &val,
@@ -183,7 +176,7 @@ double Interpreter::read_f64() {
     return val;
 }
 
-std::string Interpreter::read_const_str(uint32_t offset) {
+std::string Interpreter::read_const_str(int32_t offset) {
 
     if (offset + sizeof(uint16_t) > source.size()) {
         throw InterpreterError("Constant offset out of range");
@@ -227,7 +220,7 @@ void Interpreter::jump_backwards(size_t dist) {
 
 void Interpreter::store_int() {
     uint16_t offset = read_u16();
-    uint32_t value = static_cast<uint32_t>(opstack.pop_u64());
+    int32_t value = static_cast<int32_t>(opstack.pop_u64());
     stack.set_u64(
         value,
         offset
@@ -239,8 +232,8 @@ bool is_const_ptr(uint64_t value) {
 }
 
 void Interpreter::store_ptr() {
-    uint16_t offset = read_u16();
-    uint64_t value = opstack.pop_u64();
+    const uint16_t offset = read_u16();
+    const uint64_t value = opstack.pop_u64();
     stack.set_u64(
         value,
         offset
@@ -266,7 +259,7 @@ void Interpreter::store_bool() {
 }
 
 void Interpreter::push_int() {
-    const uint32_t operand = read_u32();
+    const int32_t operand = read_u32();
     opstack.push_u64(operand);
 }
 
@@ -280,62 +273,62 @@ void Interpreter::push_float() {
 }
 
 void Interpreter::push_const() {
-    const uint32_t pos = read_u32();
+    const int32_t pos = read_u32();
     uint64_t tagged = static_cast<uint64_t>(pos) | (1ULL << 63);
     opstack.push_u64(tagged);
 }
 
 void Interpreter::add_int() {
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a + b
     );
 }
 
 void Interpreter::is_eq_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a == b
     );
 }
 
 void Interpreter::is_not_eq_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a != b
     );
 }
 
 void Interpreter::is_greater_or_eq_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a >= b
     );
 }
 
 void Interpreter::is_less_or_eq_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a <= b
     );
 }
 
 void Interpreter::is_greater_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a > b
     );
 }
 
 void Interpreter::is_less_int() {
-    const uint32_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t b = static_cast<int32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a < b
     );
@@ -421,24 +414,28 @@ void Interpreter::add_str_ptr() {
     std::string b;
 
     if (is_const_ptr(a_ptr)) {
-        a = read_const_str(static_cast<uint32_t>(a_ptr));
+        a = read_const_str(static_cast<int32_t>(a_ptr));
     } else {
-        a = *reinterpret_cast<std::string*>(a_ptr);
+        auto* a_heap_ptr = reinterpret_cast<std::string*>(a_ptr);
+        a = *a_heap_ptr;
+        delete a_heap_ptr;
     }
     if (is_const_ptr(b_ptr)) {
-        b = read_const_str(static_cast<uint32_t>(b_ptr));
+        b = read_const_str(static_cast<int32_t>(b_ptr));
     } else {
-        b = *reinterpret_cast<std::string*>(b_ptr);
+        auto* b_heap_ptr = reinterpret_cast<std::string*>(b_ptr);
+        b = *b_heap_ptr;
+        delete b_heap_ptr;
     }
 
-    std::string* result = new std::string(b + a);
+    auto* result = new std::string(b + a);
     opstack.push_u64(
         reinterpret_cast<uint64_t>(result)
     );
 }
 
 void Interpreter::print_int() {
-    const uint32_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const int32_t a = static_cast<int32_t>(opstack.pop_u64());
     out << a;
 }
 
@@ -457,19 +454,28 @@ void Interpreter::print_str_ptr() {
 
     std::string a;
     if (is_const_ptr(a_ptr)) {
-        a = read_const_str(static_cast<uint32_t>(a_ptr));
+        a = read_const_str(static_cast<int32_t>(a_ptr));
     } else {
-        a = *reinterpret_cast<std::string*>(a_ptr);
+        auto* a_heap_ptr = reinterpret_cast<std::string*>(a_ptr);
+        a = *a_heap_ptr;
+        delete a_heap_ptr;
     }
 
     out << a;
 }
 
 void Interpreter::sub_int() {
-    const uint64_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint64_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const uint64_t b = static_cast<int32_t>(opstack.pop_u64());
+    const uint64_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a - b
+    );
+}
+
+void Interpreter::sub_unary_int() {
+    const uint64_t a = static_cast<int32_t>(opstack.pop_u64());
+    opstack.push_u64(
+        -a
     );
 }
 
@@ -481,9 +487,16 @@ void Interpreter::sub_float() {
     );
 }
 
+void Interpreter::sub_unary_float() {
+    const double a = opstack.pop_f64();
+    opstack.push_f64(
+        -a
+    );
+}
+
 void Interpreter::mult_int() {
-    const uint64_t a = static_cast<uint32_t>(opstack.pop_u64());
-    const uint64_t b = static_cast<uint32_t>(opstack.pop_u64());
+    const uint64_t a = static_cast<int32_t>(opstack.pop_u64());
+    const uint64_t b = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a * b
     );
@@ -498,8 +511,8 @@ void Interpreter::mult_float() {
 }
 
 void Interpreter::div_int() {
-    const uint64_t b = static_cast<uint32_t>(opstack.pop_u64());
-    const uint64_t a = static_cast<uint32_t>(opstack.pop_u64());
+    const uint64_t b = static_cast<int32_t>(opstack.pop_u64());
+    const uint64_t a = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_u64(
         a / b
     );
@@ -544,49 +557,63 @@ void Interpreter::load_str_ptr() {
 }
 
 void Interpreter::int_to_float() {
-    uint32_t value = static_cast<uint32_t>(opstack.pop_u64());
+    int32_t value = static_cast<int32_t>(opstack.pop_u64());
     opstack.push_f64(
         static_cast<double>(value)
     );
 }
 
 void Interpreter::int_to_str_ptr() {
-    uint32_t value = static_cast<uint32_t>(opstack.pop_u64());
-    std::string* ptr = new std::string(std::to_string(value));
+    const auto value = static_cast<int32_t>(opstack.pop_u64());
+    auto* ptr = new std::string(std::to_string(value));
     opstack.push_u64(
         reinterpret_cast<uint64_t>(ptr)
     );
 }
 
 void Interpreter::float_to_str_ptr() {
-    double value = opstack.pop_f64();
-    std::string* ptr = new std::string(std::to_string(value));
+    const double value = opstack.pop_f64();
+    auto* ptr = new std::string(std::to_string(value));
     opstack.push_u64(
         reinterpret_cast<uint64_t>(ptr)
     );
 }
 
 void Interpreter::jump_if_false() {
-    uint8_t value = static_cast<uint8_t>(opstack.pop_u64());
-    const uint32_t dist = read_u16();
+    const auto value = static_cast<uint8_t>(opstack.pop_u64());
+    const int32_t dist = read_u16();
     if (!value) {
         jump_forwards(dist);
     }
 }
 
 void Interpreter::jump() {
-    const uint32_t dist = read_u16();
+    const int32_t dist = read_u16();
     jump_forwards(dist);
 }
 
 void Interpreter::jump_back() {
-    const uint32_t dist = read_u16();
+    const int32_t dist = read_u16();
     jump_backwards(dist);
 }
 
 void Interpreter::pop_stack() {
-    const uint32_t n = read_u16();
-    stack.pop_n(n);
+    stack.pop_u64();
+}
+
+void Interpreter::pop_str_ptr() {
+    auto* ptr = reinterpret_cast<std::string*>(stack.pop_u64());
+    delete ptr;
+}
+
+void Interpreter::sleep_int() {
+    const auto sleep_ms = static_cast<int32_t>(opstack.pop_u64());
+    std::this_thread::sleep_for(std::chrono::duration<int32_t>(sleep_ms));
+}
+
+void Interpreter::sleep_float() {
+    const auto sleep_ms = static_cast<double>(opstack.pop_f64());
+    std::this_thread::sleep_for(std::chrono::duration<double>(sleep_ms));
 }
 
 void Interpreter::run_code() {
@@ -730,6 +757,21 @@ void Interpreter::run_code() {
                 break;
             case Opcode::PopStack:
                 pop_stack();
+                break;
+            case Opcode::DelStrPtr:
+                pop_str_ptr();
+                break;
+            case Opcode::SleepInt:
+                sleep_int();
+                break;
+            case Opcode::SleepFloat:
+                sleep_float();
+                break;
+            case Opcode::SubUnaryInt:
+                sub_unary_int();
+                break;
+            case Opcode::SubUnaryFloat:
+                sub_unary_float();
                 break;
             default:
                 throw InterpreterError("Invalid opcode");

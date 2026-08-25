@@ -17,6 +17,7 @@ static const std::unordered_map<std::string_view, TokenType> keywords = {
     {"while", TokenType::While},
     {"break", TokenType::Break},
     {"continue", TokenType::Continue},
+    {"sleep", TokenType::Sleep}
 };
 
 static const std::unordered_map<int, TokenType> single_char_tokens = {
@@ -27,6 +28,9 @@ static const std::unordered_map<int, TokenType> single_char_tokens = {
     {'-', TokenType::Sub},
     {'/', TokenType::Div},
     {'*', TokenType::Mult},
+    {'%', TokenType::Mod},
+    {'(', TokenType::OpenParen},
+    {')', TokenType::CloseParen},
 };
 
 int Lexer::peek(size_t forwards) const {
@@ -61,9 +65,20 @@ Token Lexer::read_str() {
     const int delimiter = read();
     const size_t start = position;
     int ch;
-    while ((ch = read()) != delimiter) {
+    while ((ch = read())) {
         if (ch == EOF) {
             throw LexerError("Missing delimiter");
+        }
+
+        if (ch == '\\') {
+            if (read() == EOF) {
+                throw LexerError("Missing delimiter");
+            }
+            continue;
+        }
+
+        if (ch == delimiter) {
+            break;
         }
     }
 

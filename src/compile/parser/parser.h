@@ -22,6 +22,9 @@ class Parser {
         std::unique_ptr<ASTNode> parse_print();
         std::unique_ptr<ASTNode> parse_if();
         std::unique_ptr<ASTNode> parse_continue();
+
+        std::unique_ptr<ASTNode> parse_sleep();
+
         std::unique_ptr<ASTNode> parse_break();
         std::unique_ptr<ASTNode> parse_while();
 
@@ -39,6 +42,8 @@ class Parser {
         Program parse_scope();
 
         static int get_precedence(TokenType token_type);
+
+        ASTNode parse_unary_expression();
 
     public:
         Parser(std::vector<Token> tokens, const std::string& source)

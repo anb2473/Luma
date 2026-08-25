@@ -57,7 +57,6 @@ class Stack {
         size_t size() const {
             return stack_end - stack_pointer;
         }
-        void pop_n(uint16_t n);
 };
 
 class Interpreter {
@@ -70,7 +69,7 @@ class Interpreter {
         uint32_t read_u32();
         double read_f64();
         uint16_t read_u16();
-        std::string read_const_str(uint32_t offset);
+        std::string read_const_str(int32_t offset);
         void add_str_ptr();
         void jump_forwards(size_t dist);
         void push_int();
@@ -95,7 +94,13 @@ class Interpreter {
         void add_float();
         void load_bool();
         void sub_int();
+
+        void sub_unary_int();
+
         void sub_float();
+
+        void sub_unary_float();
+
         void mult_int();
         void mult_float();
         void div_int();
@@ -106,6 +111,13 @@ class Interpreter {
         void store_const();
         Stack stack;
         void pop_stack();
+
+        void pop_str_ptr();
+
+        void sleep_int();
+
+        void sleep_float();
+
         Stack opstack;
         void print_int();
         void print_float();

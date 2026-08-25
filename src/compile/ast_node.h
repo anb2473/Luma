@@ -42,6 +42,11 @@ struct PrintStatement {
     ValueType cast_type;
 };
 
+struct SleepStatement {
+    std::unique_ptr<ASTNode> value;
+    ValueType cast_type;
+};
+
 struct Identifier {
     std::string name;
     mutable ValueType type;
@@ -75,6 +80,13 @@ struct BinaryExpression {
     ValueType return_type;
 };
 
+struct UnaryExpression {
+    TokenType operation;
+    std::unique_ptr<ASTNode> right;
+    ValueType cast_type;
+    ValueType return_type;
+};
+
 using ASTData = std::variant<
     Program,
     LetDeclaration,
@@ -82,29 +94,18 @@ using ASTData = std::variant<
     IntLiteral,
     FloatLiteral,
     StringLiteral,
-    // AddExpression,
-    // SubExpression,
-    // MultExpression,
-    // DivExpression,
     PrintStatement,
     BoolLiteral,
-    // IsEqExpression,
-    // IsLessExpression,
-    // IsGreaterExpression,
-    // IsLessOrEqExpression,
-    // IsGreaterOrEqExpression,
     IfDeclaration,
-    // IsNotEqExpression,
     WhileDeclaration,
     BreakStatement,
     ContinueStatement,
     SetDeclaration,
-    BinaryExpression
+    BinaryExpression,
+    SleepStatement,
+    UnaryExpression
 >;
 
 struct ASTNode {
-    // ASTNodeType type;
     ASTData data;
-    // ValueType cast_type;
-    // ValueType return_type;
 };

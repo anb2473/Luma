@@ -167,7 +167,16 @@ void print_ast_node(
                     indent + 4
                 );
             },
+            [&](const SleepStatement& statement) {
+                out << padding << "SleepStatemenet\n";
 
+                out << padding << "  Value:\n";
+                print_ast_node(
+                    out,
+                    *statement.value,
+                    indent + 4
+                );
+            },
             [&](const BreakStatement&) {
                 out << padding << "BreakStatement\n";
             },
@@ -232,6 +241,26 @@ void print_ast_node(
                     *expression.left,
                     indent + 4
                 );
+
+                out << padding << "  Right:\n";
+                print_ast_node(
+                    out,
+                    *expression.right,
+                    indent + 4
+                );
+            },
+            [&](const UnaryExpression& expression) {
+                out << padding
+                    << "BinaryExpression: "
+                    << token_type_name(expression.operation);
+
+                print_types(
+                    out,
+                    expression.return_type,
+                    expression.cast_type
+                );
+
+                out << "\n";
 
                 out << padding << "  Right:\n";
                 print_ast_node(
